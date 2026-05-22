@@ -1,5 +1,7 @@
 from collections import Counter
 import time
+import rustworkx as rx
+import networkx as nx
 
 import logging
 logger = logging.getLogger(__name__)
@@ -29,3 +31,25 @@ def timeit(method):
 
         return result    
     return timed
+
+def get_all_shortest_paths(graph : nx.DiGraph, weight:str='weight'):
+    def map_id(d:dict|int, mapping_dict:dict):
+        if type(d)==int:
+            return mapping_dict[d]
+        elif type(d)==dict:
+            return {mapping_dict[k]:[[mapping_dict[node] for node in v]] if v is not None else k for k,v in d.items()}
+        elif type(d)==list:
+            return {mapping_dict[k]:[[mapping_dict[node] for node in v]] if v is not None else k for k,v in enumerate(d)}
+
+    rx_g:rx.PyDiGraph = rx.networkx_converter(graph, keep_attributes=True)
+    rx_to_nx={}
+    for node_id, node in zip(rx_g.node_indices(), rx_g.nodes()):
+        rx_to_nx[node_id] = node['__networkx_node__']
+    # nx_to_rx = {v:k for k,v in rx_to_nx.items()}
+
+    rx_paths={k:dict(v) for k,v in dict(rx.all_pairs_dijkstra_shortest_paths(
+        rx_g, 
+        edge_cost_fn=lambda x:x.get(weight))).items()
+        }
+    nx_rx_paths={map_id(k, rx_to_nx): map_id(v, rx_to_nx) for k,v in rx_paths.items()}
+    return nx_rx_paths
