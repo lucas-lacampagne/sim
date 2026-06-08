@@ -2,6 +2,7 @@ from collections import Counter
 import time
 import rustworkx as rx
 import networkx as nx
+import numpy as np
 
 import logging
 logger = logging.getLogger(__name__)
@@ -61,9 +62,90 @@ class rx_helper:
 
     def get_shortest_path(self, nx_source, nx_target, weight='weight'):
         path = rx.dijkstra_shortest_paths(self.rx_g, self.nx_to_rx[nx_source], self.nx_to_rx[nx_target],weight_fn=lambda x:x.get(weight))
-        # print(list(dict(path).values()))
-        # if not rx.has_path(self.rx_g, self.nx_to_rx[nx_source], self.nx_to_rx[nx_target]):
-        #     print('Ah bon ?!')
-        #     print(nx_source, nx_target)
-        #     print(self.nx_to_rx[nx_source], self.nx_to_rx[nx_target])
         return self.map_id(list(list(dict(path).values())[0]), self.rx_to_nx)
+
+class Car:
+    def __init__(self, departure_node, arrival_node, path):
+        self.dep=departure_node
+        self.old_loc=departure_node
+        self.path=path
+        self.loc=departure_node
+        self.arr=arrival_node
+        self.completed=(departure_node==arrival_node)
+    
+    def update_loc_and_path(self):
+        new_loc=self.path[1]
+        self.path=self.path[1:]
+        self.old_loc=self.loc
+        self.loc=new_loc
+        self.completed=(self.loc==self.arr)
+        return self
+    
+    def __repr__(self):
+        return f'({self.dep}, {self.loc}, {self.arr}, {self.completed})'
+
+class Base_car_fleet:
+    def __init__(self, graph, size=2*50, replace=False):
+        self.graph: nx.MultiDiGraph | nx.DiGraph = graph
+        self.is_multi = type(graph)==nx.MultiDiGraph
+        self.rx_helper=rx_helper(self.graph)
+        self.all_paths = self.rx_helper.get_all_shortest_paths()
+
+        cnt=0
+        while True:
+            trajs = self.init_trajs(size, replace)
+            if all(nx.has_path(graph, s, t) for s, t in trajs):
+                break
+            cnt+=1
+            print(f"{cnt}th time regenerating trajectories: some nodes were disconnected.", end='\r')
+        self.trajs = trajs
+
+        self.fleet = [Car(s, t, self.all_paths[s][t][0]) for s, t in self.trajs]
+        self.num_cars = len(trajs)
+        self.edges_state = {(car.dep, car.arr) :
+            self.check_edges_along_path(car.path) for car in self.fleet
+        }
+        self.step=0
+        self.info=[]
+
+    def init_trajs(self, size, replace):
+        nodes_list=list(self.graph.nodes)
+        chosen=np.random.choice(self.graph.number_of_nodes(), size, replace)
+        sources = [nodes_list[k] for k in chosen[:size//2]]
+        targets = [nodes_list[k] for k in chosen[size//2:size]]
+        return list(zip(sources, targets))
+
+    def __repr__(self):
+        return f'{self.fleet}'
+
+    def get_loc(self, include_completed=True):
+        if include_completed:
+            return [car.loc for car in self.fleet]
+        else:
+            return [car.loc for car in self.fleet if not car.completed]
+    def get_arr(self, include_completed=True):
+        if include_completed:
+            return [car.arr for car in self.fleet]
+        else:
+            return [car.arr for car in self.fleet if not car.completed]
+    def get_completed(self):
+        return [car.completed for car in self.fleet]
+    def all_completed(self):
+        return all(self.get_completed())
+    
+    def get_paths(self):
+        return [car.path for car in self.fleet if not car.completed]
+
+    def get_edge_blocked(self):
+        return {(u,v):edge_data['weight']>2 for u,v,edge_data in list(self.graph.edges(data=True))}
+    
+    def get_path(self, node1, node2, weight):
+        return self.rx_helper.get_shortest_path(node1, node2, weight)
+    
+    def get_cost(self, path, weight):
+        return nx.path_weight(self.graph, path, weight)
+
+    def get_path_and_cost(self, node1, node2, weight):
+        path = self.rx_helper.get_shortest_path(node1, node2, weight)
+        cost = nx.path_weight(self.graph, path, weight)
+        return path, cost
