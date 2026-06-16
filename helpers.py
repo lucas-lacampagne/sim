@@ -3,7 +3,7 @@ import time
 import rustworkx as rx
 import networkx as nx
 import numpy as np
-import itertools
+import itertools as it
 
 import logging
 logger = logging.getLogger(__name__)
@@ -149,6 +149,10 @@ class Base_car_fleet:
     def __repr__(self):
         return f'{self.fleet}'
     
+    def reset_edge(self, edge_data):
+        edge_data['load']=0
+        return edge_data
+    
     ## GET METHODS
     def get_loc(self, include_completed=True):
         if include_completed:
@@ -170,11 +174,7 @@ class Base_car_fleet:
 
     def get_edge_blocked(self):
         return {(u,v):edge_data['weight']>2 for u,v,edge_data in list(self.rx_helper.nx_graph.edges(data=True))}
-    
-
         
-        
-    
     def get_cost(self, path, weight):
         return nx.path_weight(self.rx_helper.nx_graph, path, weight)
 
@@ -198,7 +198,7 @@ class Base_car_fleet:
 
     def check_edges_along_path(self, path, dist=3):
         edges = []
-        for k, (u, v) in enumerate(itertools.pairwise(path), start=1):
+        for k, (u, v) in enumerate(it.pairwise(path), start=1):
             if u == v:
                 edges.append(0)
                 continue
@@ -241,6 +241,6 @@ class Base_car_fleet:
     def handle_interactions(self, node1, node2, demand_delta, new_weight, op):
         if node1!=node2 and self.rx_helper.nx_graph.has_edge(node1,node2): # Prevent self-loops from interacting (arrival node for example)
             edge_id, edge=self.select_min_weight_lane(node1, node2, 'weight')
-            edge['demand']+=demand_delta
-            if op(edge['demand'], edge['capacity']):
+            edge['load']+=demand_delta
+            if op(edge['load'], edge['capacity']):
                 self.rx_helper.update_edge(node1, node2, edge_id, 'weight', new_weight) # WORKS for DiGraph ?
