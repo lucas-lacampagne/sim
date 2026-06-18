@@ -43,29 +43,30 @@ class rx_helper:
         }
         self.nx_to_rx = {v:k for k,v in self.rx_to_nx.items()}
 
-        self.edge_map = {}
+        self.edge_nx_to_rx = {}
         for u, v, k, data in self.nx_graph.edges(keys=True, data=True):
             rx_u, rx_v = self.nx_to_rx[u], self.nx_to_rx[v]
             indices = self.rx_g.edge_indices_from_endpoints(rx_u, rx_v)
             for idx in indices:
                 if self.rx_g.get_edge_data_by_index(idx) == data:
-                    self.edge_map[(u, v, k)] = idx
+                    self.edge_nx_to_rx[(u, v, k)] = idx
                     break
+        self.edge_rx_to_nx={v:k for k,v in self.edge_nx_to_rx.items()}
 
     def add_edge(self, u, v, k, data):
         self.nx_graph.add_edge(u, v, k, **data)
         rx_u, rx_v = self.nx_to_rx[u], self.nx_to_rx[v]
         rx_idx = self.rx_g.add_edge(rx_u, rx_v, data)
-        self.edge_map[(u, v, k)] = rx_idx
+        self.edge_nx_to_rx[(u, v, k)] = rx_idx
 
     def remove_edge(self, u, v, k):
         self.nx_graph.remove_edge(u, v, k)
-        rx_idx = self.edge_map.pop((u, v, k))
+        rx_idx = self.edge_nx_to_rx.pop((u, v, k))
         self.rx_g.remove_edge_from_index(rx_idx)
 
     def update_edge(self, u, v, k, update_key:str, update_value):
         self.nx_graph[u][v][k][update_key]=update_value
-        rx_idx = self.edge_map[u, v, k]
+        rx_idx = self.edge_nx_to_rx[u, v, k]
         edge=self.rx_g.get_edge_data_by_index(rx_idx)
         edge[update_key]=update_value
         self.rx_g.update_edge_by_index(rx_idx, edge)
@@ -152,6 +153,11 @@ class Base_car_fleet:
     def reset_edge(self, edge_data):
         edge_data['load']=0
         return edge_data
+    
+    ## END TEST
+    def end_test_load(self):
+        for u,v,k in self.graph.edges:
+            assert self.graph[u][v][k]['load']==0 
     
     ## GET METHODS
     def get_loc(self, include_completed=True):
