@@ -4,6 +4,11 @@ import rustworkx as rx
 import networkx as nx
 import numpy as np
 import itertools as it
+import osmnx as ox
+
+from folium import Map
+import base64
+from IPython.display import IFrame, display
 
 import logging
 logger = logging.getLogger(__name__)
@@ -33,6 +38,41 @@ def timeit(method):
 
         return result
     return timed
+
+
+def show_folium_safe(m : Map, height=500):
+    """
+    Displays a Folium map in a safe IFrame using Base64 encoding.
+    This avoids "Trusted" errors, file path issues, and CSS leakage.
+    """
+    html_content = m.get_root().render()
+    encoded = base64.b64encode(html_content.encode('utf-8')).decode('utf-8')
+    data_uri = f"data:text/html;charset=utf-8;base64,{encoded}"
+    display(IFrame(src=data_uri, width="100%", height=height))
+
+def show_graph(graph, demand=None):
+    nodes, edges = ox.convert.graph_to_gdfs(graph)
+    if demand:
+        node_c = get_dict(list(graph.nodes), demand.get_loc(include_completed=False), demand.get_arr(include_completed=False), 'r', 'g', 'grey')
+        node_size = {node:Count(demand.get_loc(include_completed=False))[node]**0.5*15 for node in list(graph.nodes)}
+        if demand.is_multi:
+            edge_c = {(u,v,k):'y' if edge_data['weight']>2 else 'grey' for u,v,k,edge_data in list(graph.edges(keys=True,data=True))}
+        else:
+            edge_c = {(u,v):'y' if edge_data['weight']>2 else 'grey' for u,v,edge_data in list(graph.edges(data=True))}
+        for edge in demand.info:
+            edge_c[edge]='r'
+        # edge_alpha = {(u,v,k):1 if demand.rx_helper.nx_graph.has_edge(u,v,k) else 0. for u,v,k,edge_data in list(demand.graph.edges(keys=True,data=True))}
+
+    m = edges.explore(
+        color=list(edge_c.values()) if demand else None,
+        tiles="cartodbdarkmatter"
+    )
+    map=nodes.explore(
+        m=m, 
+        color=list(node_c.values()) if demand else None,
+        marker_kwds={"radius": 3}
+    )
+    show_folium_safe(map)
 
 class rx_helper:
     def __init__(self, graph : nx.MultiDiGraph):
