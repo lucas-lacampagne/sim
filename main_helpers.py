@@ -1,38 +1,16 @@
-from collections import Counter
 import time
-import rustworkx as rx
 import networkx as nx
 import numpy as np
 import itertools as it
-import osmnx as ox
-import matplotlib
+from display import Display
+from rustworkx_helper import rx_helper
+from car import Car
 
-import copy
-import base64
-import folium
-from IPython.display import IFrame, display
-import base64
-from shapely.geometry import LineString, Point
 from attack.attack import feature_based_attack
 
 import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.INFO)
-
-def get_dict(nodes, nodes_pos, nodes_neg, pos_val, neg_val, null_val):
-    out={node:null_val for node in nodes}
-    for node in nodes:
-        if node in nodes_neg:
-            out[node]=neg_val
-        elif node in nodes_pos:
-            out[node]=pos_val
-    return out
-
-class Count(Counter):
-    def __missing__(self, key):
-        'The count of elements not in the Counter is one.'
-        # Needed so that self[missing_item] does not raise KeyError
-        return 1
 
 def timeit(method):
     def timed(*args, **kw):
@@ -56,180 +34,13 @@ In MultiDiGraph, selects the path with minimum weight.
     else:
         return None, lanes
 
-def show_folium_safe(m : folium.Map, height=500):
-    """
-    Displays a Folium map in a safe IFrame using Base64 encoding.
-    This avoids "Trusted" errors, file path issues, and CSS leakage.
-    """
-    html_content = m.get_root().render()
-    encoded = base64.b64encode(html_content.encode('utf-8')).decode('utf-8')
-    data_uri = f"data:text/html;charset=utf-8;base64,{encoded}"
-    display(IFrame(src=data_uri, width="100%", height=height), clear=True)
-
-def display_graph(graph, demand=None, show=True):
-    nodes, edges = ox.convert.graph_to_gdfs(graph)
-
-    m = edges.explore(
-        tiles="cartodbdarkmatter"
-    )
-    map=nodes.explore(
-        m=m, 
-        marker_kwds={"radius": 3}
-    )
-    if demand and demand.log_trajs:
-        colors = [
-            'red',
-            'gray',
-            'darkred',
-            'lightred',
-            'orange',
-            'beige',
-            'green',
-            'darkgreen',
-            'lightgreen',
-            'lightblue',
-            'purple',
-            'darkpurple',
-            'pink',
-            'lightgray',
-            'black'
-        ]
-        np.random.shuffle(colors)
-        for k,(car,color) in enumerate(zip(demand.fleet, colors)):
-            for point in car.traj:
-                point_geom_proj, crs = (
-                    ox.projection.project_geometry(
-                        point, 
-                        crs=demand.graph.graph['crs'], 
-                        to_latlong=True
-                        )
-                )
-
-                folium.Marker(
-                    location=[point_geom_proj.y, point_geom_proj.x],
-                    tooltip=f"{car.arr}",
-                    popup=car.__repr__(),
-                    icon=folium.Icon(color=color,icon=f"{k}", prefix='fa'),
-                ).add_to(map)
-    if show:
-        show_folium_safe(map)
-    return map
-
-class rx_helper:
-    def __init__(self, graph : nx.MultiDiGraph):
-        self.nx_graph = graph.copy()
-        self.rx_g:rx.PyDiGraph = rx.networkx_converter(graph, keep_attributes=True)
-        self.rx_to_nx={node_id : node['__networkx_node__']
-            for node_id, node in zip(self.rx_g.node_indices(), self.rx_g.nodes())
-        }
-        self.nx_to_rx = {v:k for k,v in self.rx_to_nx.items()}
-
-        self.edge_nx_to_rx = {}
-        for u, v, k, data in self.nx_graph.edges(keys=True, data=True):
-            rx_u, rx_v = self.nx_to_rx[u], self.nx_to_rx[v]
-            indices = self.rx_g.edge_indices_from_endpoints(rx_u, rx_v)
-            for idx in indices:
-                if self.rx_g.get_edge_data_by_index(idx) == data:
-                    self.edge_nx_to_rx[(u, v, k)] = idx
-                    break
-        self.edge_rx_to_nx={v:k for k,v in self.edge_nx_to_rx.items()}
-
-    def add_edge(self, u, v, k, data):
-        self.nx_graph.add_edge(u, v, k, **data)
-        rx_u, rx_v = self.nx_to_rx[u], self.nx_to_rx[v]
-        rx_idx = self.rx_g.add_edge(rx_u, rx_v, data)
-        self.edge_nx_to_rx[(u, v, k)] = rx_idx
-
-    def remove_edge(self, u, v, k):
-        self.nx_graph.remove_edge(u, v, k)
-        rx_idx = self.edge_nx_to_rx.pop((u, v, k))
-        self.rx_g.remove_edge_from_index(rx_idx)
-
-    def update_edge(self, u, v, k, update_key:str, update_value):
-        self.nx_graph[u][v][k][update_key]=update_value
-        rx_idx = self.edge_nx_to_rx[u, v, k]
-        edge=self.rx_g.get_edge_data_by_index(rx_idx)
-        edge[update_key]=update_value
-        self.rx_g.update_edge_by_index(rx_idx, edge)
-
-    def map_id(self, d:dict|int|list, mapping_dict:dict):
-        if type(d)==int:
-            return mapping_dict[d]
-        elif type(d)==dict:
-            return {mapping_dict[k]:[[mapping_dict[node] for node in v]] if v is not None else k for k,v in d.items()}
-        elif type(d)==list:
-            return [mapping_dict[node] for node in d]
-        
-    def is_path(self, path):
-        """Returns whether or not the specified path exists.
-
-        For it to return True, every node on the path must exist and
-        each consecutive pair must be connected via one or more edges.
-
-        Parameters
-        ----------
-        path : list
-            A list of nodes which defines the path to traverse
-
-        Returns
-        -------
-        bool
-            True if `path` is a valid path in `G`
-
-        """
-        try:
-            return all(nbr in rx.graph_adjacency_matrix(self.rx_g)[node] for node, nbr in it.pairwise(path))
-        except (KeyError, TypeError):
-            return False
-
-    def get_all_shortest_paths(self, weight:str='weight'):
-        rx_paths={k:dict(v) for k,v in dict(rx.all_pairs_dijkstra_shortest_paths(
-            self.rx_g,
-            edge_cost_fn=lambda x:x.get(weight))).items()
-            }
-        nx_rx_paths={self.map_id(k, self.rx_to_nx): self.map_id(v, self.rx_to_nx) for k,v in rx_paths.items()}
-        return nx_rx_paths
-
-    def get_shortest_path(self, nx_source, nx_target, weight='weight'):
-        path = rx.dijkstra_shortest_paths(self.rx_g, self.nx_to_rx[nx_source], self.nx_to_rx[nx_target],weight_fn=lambda x:x.get(weight))
-        return self.map_id(list(list(dict(path).values())[0]), self.rx_to_nx)
-
-class Car:
-    def __init__(self, graph:nx.MultiDiGraph, departure_node:int, arrival_node:int, path:list[int], cost:int):
-        self.dep=departure_node
-        self.arr=arrival_node
-        self.completed=(departure_node==arrival_node)
-
-        self.path=copy.deepcopy(path) #list of following true nodes - begins with next_true_node
-        self.cost=cost
-
-        self.last_true_node=self.path.pop(0)
-        self.next_true_node=self.path[0]
-        self.check_next_edge=True
-        self.next_edge_key=0
-
-        self.loc=graph.nodes[departure_node]['x'], graph.nodes[departure_node]['y']
-        self.loc=Point(self.loc)
-        self.traj=[self.loc]
-
-    def go_to_next_true_node(self, graph:nx.MultiDiGraph, next_weight:int):
-        self.last_true_node=self.path.pop(0)
-        self.loc=Point(graph.nodes[self.last_true_node]['x'], graph.nodes[self.last_true_node]['y'])
-        self.cost-=next_weight
-        self.next_true_node=self.path[0] if len(self.path)>0 else None
-        self.completed=(self.last_true_node==self.arr)
-        return self
-
-    
-    def __repr__(self):
-        return f'({self.dep}, {self.last_true_node}, {self.loc}, {self.next_true_node}, {self.arr}, {self.completed})'
-
 class Base_car_fleet:
     ## INIT METHODS
-    def __init__(self, graph, size=50, log_trajs=False):
+    def __init__(self, graph, size=50, log_trajs:int=0):
         self.graph: nx.MultiDiGraph | nx.DiGraph = graph
         self.is_multi = type(graph)==nx.MultiDiGraph
         self.rx_helper=rx_helper(self.graph)
+        self.display_h=Display()
         self.all_paths = self.rx_helper.get_all_shortest_paths()
 
         cnt=0
@@ -371,7 +182,7 @@ class Base_car_fleet:
             rx_edges = feature_based_attack(self.rx_helper.rx_g.copy(), l=number_steps*batch_size, attack_name=attack)
             edges=[self.rx_helper.edge_rx_to_nx[rx_edge] for rx_edge in rx_edges]
         else:
-            edges = feature_based_attack(self.graph.copy(), l=number_steps*batch_size, attack_name=attack, 
+            edges = feature_based_attack(self.rx_helper.nx_graph.copy(), l=number_steps*batch_size, attack_name=attack, 
                                     #  igraph=ig.Graph.from_networkx(self.graph.copy())
                                     )
         self.rmvd_edges=[]
@@ -403,6 +214,7 @@ class Base_car_fleet:
                 edges=self.rmvd_edges.pop(0)
                 for (u,v,k), data in edges:
                     self.rx_helper.add_edge(u,v,k,data)
+
 
 class UnitTest:
     def __init__(self, demand:Base_car_fleet):
