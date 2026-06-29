@@ -97,7 +97,13 @@ class Base_car_fleet:
         return all(self.get_completed())
     
     def get_paths(self): # change to calculate paths from next_true node
-        return {(car.next_true_node, car.arr):car.path for car in self.fleet if not car.completed}
+        def get_s_t(car):
+            # return (car.next_true_node, car.arr)
+            if car.next_true_node:
+                return (car.next_true_node, car.arr)
+            else:
+                return (car.last_true_node, car.arr)
+        return {get_s_t(car):car.path for car in self.fleet if not car.completed}
 
     def get_edge_blocked(self):
         return {(u,v):edge_data['weight']>2 for u,v,edge_data in list(self.rx_helper.nx_graph.edges(data=True))}
