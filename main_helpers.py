@@ -22,7 +22,7 @@ def timeit(method):
         return result
     return timed
 
-def select_min_weight_lane(graph, node1, node2, weight):
+def select_min_weight_lane(graph, node1, node2, weight='weight'):
     """
 In MultiDiGraph, selects the path with minimum weight.
     """   
@@ -53,7 +53,7 @@ class Base_car_fleet:
         self.trajs = trajs
         self.log_trajs=log_trajs
 
-        self.fleet = [Car(self.graph, s, t, self.all_paths[s][t][0], nx.path_weight(self.graph, self.all_paths[s][t][0], 'weight')) for s, t in self.trajs]
+        self.fleet = [Car(self.graph, id, s, t, self.all_paths[s][t][0], nx.path_weight(self.graph, self.all_paths[s][t][0], 'weight')) for id, (s, t) in enumerate(self.trajs)]
         self.num_cars = len(trajs)
         self.edges_state = {(car.dep, car.arr) :
             self.check_edges_along_path(car.path) for car in self.fleet
@@ -93,6 +93,13 @@ class Base_car_fleet:
         
     def get_completed(self):
         return [car.completed for car in self.fleet]
+    
+    def get_fleet(self,include_completed=True):
+        if include_completed:
+            return [car for car in self.fleet]
+        else:
+            return [car for car in self.fleet if not car.completed]
+        
     def all_completed(self):
         return all(self.get_completed())
     
@@ -120,6 +127,10 @@ class Base_car_fleet:
     
     def get_cost(self, path, weight):
         return nx.path_weight(self.rx_helper.nx_graph, path, weight)
+    
+    def log_info(self, car):
+        if car.cost>1000:
+            self.info.append((car.last_true_node, car.next_true_node))
     
     ## LOGIC METHODS    
     def check_edges_along_path(self, path, dist=3):
@@ -166,12 +177,12 @@ class Base_car_fleet:
             self.all_paths[s][t] = [path]
         return self.all_paths
 
-    def handle_interactions(self, node1, node2, edge_id, demand_delta, new_weight, op):
-        if node1!=node2 and self.rx_helper.nx_graph.has_edge(node1,node2): # Prevent self-loops from interacting (arrival node for example)
-            edge=self.rx_helper.nx_graph[node1][node2][edge_id]
-            edge['load']+=demand_delta
-            if op(edge['load'], edge['capacity']):
-                self.rx_helper.update_edge(node1, node2, edge_id, 'weight', new_weight) # WORKS for DiGraph ?
+    def handle_interactions(self, node1, node2, edge_id, demand_delta, new_weight, op)->False:
+        edge=self.rx_helper.nx_graph[node1][node2][edge_id]
+        edge['load']+=demand_delta
+        if op(edge['load'], edge['capacity']):
+            self.rx_helper.update_edge(node1, node2, edge_id, 'weight', new_weight) # WORKS for DiGraph ?
+        return False
 
     #HANDLE ATTACK
     def prepare_attack(self, attack='deg', batch_size=5, number_steps=30):
@@ -201,7 +212,6 @@ class Base_car_fleet:
         def _attack(u,v,k):
             if self.rx_helper.nx_graph.has_edge(u,v,k):
                 edge_data=self.rx_helper.nx_graph[u][v][k]
-                self.reset_edge(edge_data)
                 edges_rmvd.append([(u,v,k), edge_data])
                 self.rx_helper.remove_edge(u,v,k)
                 
@@ -235,9 +245,24 @@ class UnitTest:
         self.demand.run(attack=False, repair=False)
         
         ## END TEST
-    def end_test_load(self):
-        for u,v,k in self.demand.graph.edges:
-            assert self.demand.graph[u][v][k]['load']==0
+    def test_load(self):
+        try:
+            for u,v,k in self.demand.rx_helper.nx_graph.edges:
+                assert self.demand.rx_helper.nx_graph[u][v][k]['load']==0
+        except Exception as e:
+            self.demand.display_h.display_huge(self.demand, cmap='prism')
+            raise e
+    
+    def test_graph(self):
+        try:
+            assert self.demand.rx_helper.nx_graph.number_of_edges()==self.demand.graph.number_of_edges()
+            assert self.demand.rx_helper.nx_graph.number_of_nodes()==self.demand.graph.number_of_nodes()
+        except Exception as e:
+            print(self.demand.rx_helper.nx_graph.number_of_edges(), self.demand.graph.number_of_edges())
+            print(self.demand.rx_helper.nx_graph.number_of_nodes(), self.demand.graph.number_of_nodes())
+            raise e
+
 
     def run(self):
-        self.end_test_load()
+        self.test_load()
+        self.test_graph()

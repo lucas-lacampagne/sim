@@ -78,7 +78,7 @@ class Display:
                           'r', 'g', 'grey')
         node_size = {node:Count(demand.get_last_nodes_visited(include_completed=False))[node]**0.5*15 for node in list(demand.graph.nodes)}
         if demand.is_multi:
-            edge_c = {(u,v,k):'y' if edge_data['load']>0 else 'grey' for u,v,k,edge_data in list(demand.rx_helper.nx_graph.edges(keys=True,data=True))}
+            edge_c = {(u,v,k):'y' if edge_data['load']>0 else 'grey' for u,v,k,edge_data in list(demand.graph.edges(keys=True,data=True))}
             for u,v,k in edge_c.keys():
                 if edge_c[(u,v,k)]=='y':
                     try:
@@ -93,7 +93,7 @@ class Display:
         
         # print(edge_c)
         ox.plot.plot_graph(
-                nx.MultiDiGraph(demand.rx_helper.nx_graph),
+                nx.MultiDiGraph(demand.graph),
                 ax=ax,          # Use the animation's axis
                 show=False,     # Don't open a new window now
                 close=False,    # Don't close the plot
@@ -104,7 +104,7 @@ class Display:
             )
 
     @timeit
-    def display_huge(self, demand, ax):
+    def display_huge(self, demand, ax=None, cmap='RdYlGn_r'):
         """
     Displays city (demand.graph) and traffic (demand.fleet).
         """
@@ -113,12 +113,12 @@ class Display:
                           [], #demand.get_arr(include_completed=False), 
                           'grey', 'grey', 'grey')
         node_size = {node:Count(demand.get_last_nodes_visited(include_completed=False))[node]**0.5*15 for node in list(demand.graph.nodes)}
-        edge_c=self.get_edge_c(demand.rx_helper.nx_graph)
+        edge_c=self.get_edge_c(demand.rx_helper.nx_graph, cmap)
         edge_alpha = {(u,v,k):1 if demand.rx_helper.nx_graph.has_edge(u,v,k) else 0. for u,v,k,edge_data in list(demand.graph.edges(keys=True,data=True))}
         
         ox.plot.plot_graph(
                 nx.MultiDiGraph(demand.rx_helper.nx_graph),
-                ax=ax,          # Use the animation's axis
+                ax=ax if ax else None,          # Use the animation's axis
                 show=False,     # Don't open a new window now
                 close=False,    # Don't close the plot
                 node_color=list(node_c.values()),
@@ -139,11 +139,13 @@ class Display:
         display(IFrame(src=data_uri, width="100%", height=height), clear=True)
 
     @timeit
-    def display_graph(self, demand=None, show=True):
-        nodes, edges = ox.convert.graph_to_gdfs(demand.graph)
-
+    def display_graph(self, graph, demand=None, show=True):
+        nodes, edges = ox.convert.graph_to_gdfs(graph)
+        if demand:
+            edges['color']=self.get_edge_c(demand.rx_helper.nx_graph)
         m = edges.explore(
-            tiles="cartodbdarkmatter"
+            tiles="cartodbdarkmatter",
+            color='color' if demand else None
         )
         map=nodes.explore(
             m=m, 
@@ -168,4 +170,31 @@ class Display:
                     ).add_to(map)
         if show:
             self.show_folium_safe(map)
+        return map
+    
+
+    def highlight_node(self, graph, node, markers=None):
+        nodes, edges = ox.convert.graph_to_gdfs(nx.ego_graph(graph, node, radius=2))
+
+        m = edges.explore(
+            tiles="cartodbdarkmatter",
+        )
+        map=nodes.explore(
+            m=m, 
+            marker_kwds={"radius": 3}
+        )
+        if markers:
+            for k,marker in enumerate(markers):
+                point_geom_proj, crs = (
+                    ox.projection.project_geometry(
+                        marker, 
+                        crs=graph.graph['crs'], 
+                        to_latlong=True
+                        )
+                )
+                folium.Marker(
+                    location=[point_geom_proj.y, point_geom_proj.x],
+                    icon=folium.Icon(icon=f"{k}", prefix='fa'),
+                ).add_to(map)
+        self.show_folium_safe(map)
         return map
