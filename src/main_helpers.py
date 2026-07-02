@@ -2,11 +2,11 @@ import time
 import networkx as nx
 import numpy as np
 import itertools as it
-from display import Display
-from rustworkx_helper import rx_helper
-from car import Car
+from src.display import Display
+from src.rustworkx_helper import rx_helper
+from src.car import Car
 
-from attack.attack import feature_based_attack
+from src.attack.attack import feature_based_attack
 
 import logging
 logger = logging.getLogger(__name__)

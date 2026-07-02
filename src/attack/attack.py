@@ -4,7 +4,7 @@ import networkx as nx
 import rustworkx as rx
 import random as rd
 from math import inf
-from utils import networkx2adjacency
+from src.utils import networkx2adjacency
 
 
 def edge_betweenness_centrality_ig(igraph: ig.Graph, approx: int, weight: bool):
@@ -164,7 +164,9 @@ def feature_based_attack(
                 graph.remove_edge(chosen_edge)
     else:
         for i in range(1,l+1):
+            print(f"{i} edge removals done over {l}, hence {i*100 / l:.2f}%", end='\r')
             chosen_edge = feature(*parameters)
+            attack.append(chosen_edge)
             graph.remove_edge(*chosen_edge)
     return attack
 
