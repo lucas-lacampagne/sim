@@ -8,6 +8,8 @@ import folium
 from IPython.display import IFrame, display
 import base64
 import time
+import copy
+import pandas as pd
 
 import logging
 logger = logging.getLogger(__name__)
@@ -40,12 +42,12 @@ class Count(Counter):
         return 1
 
 class Display:
-    def __init__(self):
+    def __init__(self, shuffle=True):
         self.colors = [
                 'red',
                 'gray',
                 'darkred',
-                'lightred',
+                # 'lightred',
                 'orange',
                 'beige',
                 'green',
@@ -53,12 +55,13 @@ class Display:
                 'lightgreen',
                 'lightblue',
                 'purple',
-                'darkpurple',
+                # 'darkpurple',
                 'pink',
                 'lightgray',
-                'black'
+                # 'black'
             ]
-        np.random.shuffle(self.colors)
+        if shuffle:
+            np.random.shuffle(self.colors)
         pass
 
     def get_edge_c(self, graph, cmap='RdYlGn_r'):
@@ -67,6 +70,13 @@ class Display:
         edge_c=sorted(list(set(edge_load.values())))
         edge_c={load:color for load,color in zip(edge_c, cmap(edge_c))}
         return {k:edge_c[load] for k,load in edge_load.items()}
+    
+    def transform_df(self, df):
+        df_copy=copy.deepcopy(df)
+        df_copy=df_copy.to_crs('epsg:4326')
+        df_copy['t']=pd.to_datetime(df_copy['t'])
+        df_copy['trajectory_id']=df_copy['trajectory_id'].astype('str')
+        return df_copy
     
     @timeit
     def display(self, demand, ax):
@@ -139,35 +149,28 @@ class Display:
         display(IFrame(src=data_uri, width="100%", height=height), clear=True)
 
     @timeit
-    def display_graph(self, graph, demand=None, show=True):
+    def display_graph(self, graph, demand=None, show=True, m=None):
         nodes, edges = ox.convert.graph_to_gdfs(graph)
         if demand:
             edges['color']=self.get_edge_c(demand.rx_helper.nx_graph)
         m = edges.explore(
             tiles="cartodbdarkmatter",
+            m=m if m else None,
             color='color' if demand else None
         )
         map=nodes.explore(
-            m=m, 
+            m=m,
             marker_kwds={"radius": 3}
         )
         if demand and demand.log_trajs:
-            for k,(car,color) in enumerate(zip(demand.fleet, self.colors)):
-                for point in car.traj:
-                    point_geom_proj, crs = (
-                        ox.projection.project_geometry(
-                            point, 
-                            crs=demand.graph.graph['crs'], 
-                            to_latlong=True
-                            )
-                    )
-
-                    folium.Marker(
-                        location=[point_geom_proj.y, point_geom_proj.x],
-                        tooltip=f"{car.arr}",
-                        popup=car.__repr__(),
-                        icon=folium.Icon(color=color,icon=f"{k}", prefix='fa'),
-                    ).add_to(map)
+            for _, row in demand.trajs.to_crs('epsg:4326').iterrows():
+                car=demand.fleet[row['trajectory_id']]
+                folium.Marker(
+                    location=[row['geometry'].y, row['geometry'].x],
+                    tooltip=f"{car.arr}",
+                    popup=car.__repr__(),
+                    icon=folium.Icon(color=self.colors[row['trajectory_id']],icon=f"{row['trajectory_id']}", prefix='fa'),
+                ).add_to(map)
         if show:
             self.show_folium_safe(map)
         return map

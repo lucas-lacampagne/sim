@@ -35,6 +35,12 @@ class Car:
         self.completed=(self.last_true_node==self.arr)
         return road
 
-    
+    def log_traj(self, log_trajs, time):
+        if self.id<log_trajs:
+            self.traj.append((time, self.loc))
+
+    def reset_traj(self):
+        self.traj=[]
+
     def __repr__(self):
         return f'({self.id}:({self.dep},{self.arr}), {self.last_true_node}, {self.next_true_node}, {self.cost})'

@@ -5,6 +5,9 @@ import itertools as it
 from src.display import Display
 from src.rustworkx_helper import rx_helper
 from src.car import Car
+import datetime
+import geopandas as gpd
+import pandas as pd
 
 from src.attack.attack import feature_based_attack
 
@@ -50,11 +53,11 @@ class Base_car_fleet:
                 break
             cnt+=1
             print(f"{cnt}th time regenerating trajectories: some nodes were disconnected.", end='\r')
-        self.trajs = trajs
+        self.clock=datetime.datetime.now()
         self.log_trajs=log_trajs
 
-        self.fleet = [Car(self.graph, id, s, t, self.all_paths[s][t][0], nx.path_weight(self.graph, self.all_paths[s][t][0], 'weight')) for id, (s, t) in enumerate(self.trajs)]
-        self.num_cars = len(trajs)
+        self.fleet = [Car(self.graph, id, s, t, self.all_paths[s][t][0], nx.path_weight(self.graph, self.all_paths[s][t][0], 'weight')) for id, (s, t) in enumerate(trajs)]
+        self.trajs = gpd.GeoDataFrame([(self.clock, car.loc, car.id) for car in self.fleet[:log_trajs]], columns=['t', 'geometry', 'trajectory_id'], crs=self.graph.graph['crs'])
         self.edges_state = {(car.dep, car.arr) :
             self.check_edges_along_path(car.path) for car in self.fleet
         }
@@ -131,6 +134,19 @@ class Base_car_fleet:
     def log_info(self, car):
         if car.cost>1000:
             self.info.append((car.last_true_node, car.next_true_node))
+    
+    def save_trajs(self, filename):
+        trajs=self.trajs.to_crs('epsg:4326')
+        trajs['t']=pd.to_datetime(trajs['t'])
+        trajs.to_file(filename)
+    
+    def format_trajs_step(self):
+        l=[]
+        for car in self.get_fleet(include_completed=False)[:self.log_trajs]:
+            for t, geom in car.traj:
+                l.append((t, geom, car.id))
+        return gpd.GeoDataFrame(l, columns=['t', 'geometry', 'trajectory_id'], crs=self.graph.graph['crs'])
+
     
     ## LOGIC METHODS    
     def check_edges_along_path(self, path, dist=3):
