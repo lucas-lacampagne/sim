@@ -10,6 +10,7 @@ import base64
 import time
 import copy
 import pandas as pd
+import movingpandas as mpd
 
 import logging
 logger = logging.getLogger(__name__)
@@ -149,7 +150,7 @@ class Display:
         display(IFrame(src=data_uri, width="100%", height=height), clear=True)
 
     @timeit
-    def display_graph(self, graph, demand=None, show=True, m=None):
+    def display_graph(self, graph, demand=None, include_trajs=False, include_markers=False, show=True, m=None):
         nodes, edges = ox.convert.graph_to_gdfs(graph)
         if demand:
             edges['color']=self.get_edge_c(demand.rx_helper.nx_graph)
@@ -162,15 +163,21 @@ class Display:
             m=m,
             marker_kwds={"radius": 3}
         )
-        if demand and demand.log_trajs:
-            for _, row in demand.trajs.to_crs('epsg:4326').iterrows():
-                car=demand.fleet[row['trajectory_id']]
-                folium.Marker(
-                    location=[row['geometry'].y, row['geometry'].x],
-                    tooltip=f"{car.arr}",
-                    popup=car.__repr__(),
-                    icon=folium.Icon(color=self.colors[row['trajectory_id']],icon=f"{row['trajectory_id']}", prefix='fa'),
-                ).add_to(map)
+        if demand:
+            if include_trajs:
+                self.tc = mpd.TrajectoryCollection(self.transform_df(demand.trajs), "trajectory_id", t="t")
+                m=self.tc.explore(column="trajectory_id", cmap=self.colors[:demand.log_trajs], style_kwds={"weight": 4}, m=m)
+
+            if include_markers and demand.log_trajs:
+                for _, row in demand.trajs.to_crs('epsg:4326').iterrows():
+                    car=demand.fleet[row['trajectory_id']]
+                    folium.Marker(
+                        location=[row['geometry'].y, row['geometry'].x],
+                        tooltip=f"{car.arr}",
+                        popup=car.__repr__(),
+                        icon=folium.Icon(color=self.colors[row['trajectory_id']],icon=f"{row['trajectory_id']}", prefix='fa'),
+                    ).add_to(map)
+
         if show:
             self.show_folium_safe(map)
         return map
