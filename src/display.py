@@ -133,7 +133,7 @@ class Display:
                 show=False,     # Don't open a new window now
                 close=False,    # Don't close the plot
                 node_color=list(node_c.values()),
-                node_size=list(node_size.values()),
+                # node_size=list(node_size.values()),
                 edge_alpha=list(edge_alpha.values()),
                 edge_color=list(edge_c.values())
             )

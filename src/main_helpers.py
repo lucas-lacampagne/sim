@@ -43,7 +43,6 @@ class Base_car_fleet:
     def __init__(self, graph, helper:rx_helper|rk_helper, size=50, log_trajs:int=0):
         self.graph: nx.MultiDiGraph | nx.DiGraph = graph
         self.is_multi = type(graph)==nx.MultiDiGraph
-        self.calc_helper:rx_helper|rk_helper=helper(self.graph)
         self.display_h=Display()
 
         cnt=0
@@ -56,7 +55,8 @@ class Base_car_fleet:
         self.clock=datetime.datetime.now()
         self.log_trajs=log_trajs
 
-        self.fleet = [Car(self.graph, id, s, t, self.calc_helper.all_paths[s][t][0], nx.path_weight(self.graph, self.calc_helper.all_paths[s][t][0], 'weight')) for id, (s, t) in enumerate(trajs)]
+        self.calc_helper:rx_helper|rk_helper=helper(self.graph, trajs)
+        self.fleet = [Car(self.graph, id, s, t, path:=self.calc_helper.get_shortest_path(s, t), nx.path_weight(self.graph, path, 'weight')) for id, (s, t) in enumerate(trajs)]
         self.trajs = gpd.GeoDataFrame([(self.clock, car.loc, car.id) for car in self.fleet[:log_trajs]], columns=['t', 'geometry', 'trajectory_id'], crs=self.graph.graph['crs'])
         self.edges_state = {(car.dep, car.arr) :
             self.check_edges_along_path(car.path) for car in self.fleet

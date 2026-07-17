@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.INFO)
 
 class rx_helper:
-    def __init__(self, graph : nx.MultiDiGraph):
+    def __init__(self, graph : nx.MultiDiGraph, trajs):
         self.nx_graph = graph.copy()
         self.rx_g:rx.PyDiGraph = rx.networkx_converter(graph, keep_attributes=True)
         self.rx_to_nx={node_id : node['__networkx_node__']
