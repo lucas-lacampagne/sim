@@ -100,7 +100,7 @@ class Display:
             edge_c = {(u,v):'y' if edge_data['weight']>2 else 'grey' for u,v,edge_data in list(demand.graph.edges(data=True))}
         for edge in demand.info:
             edge_c[edge]='r'
-        edge_alpha = {(u,v,k):1 if demand.rx_helper.nx_graph.has_edge(u,v,k) else 0. for u,v,k,edge_data in list(demand.graph.edges(keys=True,data=True))}
+        edge_alpha = {(u,v,k):1 if demand.calc_helper.nx_graph.has_edge(u,v,k) else 0. for u,v,k,edge_data in list(demand.graph.edges(keys=True,data=True))}
         
         # print(edge_c)
         ox.plot.plot_graph(
@@ -124,11 +124,11 @@ class Display:
                           [], #demand.get_arr(include_completed=False), 
                           'grey', 'grey', 'grey')
         node_size = {node:Count(demand.get_last_nodes_visited(include_completed=False))[node]**0.5*15 for node in list(demand.graph.nodes)}
-        edge_c=self.get_edge_c(demand.rx_helper.nx_graph, cmap)
-        edge_alpha = {(u,v,k):1 if demand.rx_helper.nx_graph.has_edge(u,v,k) else 0. for u,v,k,edge_data in list(demand.graph.edges(keys=True,data=True))}
+        edge_c=self.get_edge_c(demand.calc_helper.nx_graph, cmap)
+        edge_alpha = {(u,v,k):1 if demand.calc_helper.nx_graph.has_edge(u,v,k) else 0. for u,v,k,edge_data in list(demand.graph.edges(keys=True,data=True))}
         
         ox.plot.plot_graph(
-                nx.MultiDiGraph(demand.rx_helper.nx_graph),
+                nx.MultiDiGraph(demand.calc_helper.nx_graph),
                 ax=ax if ax else None,          # Use the animation's axis
                 show=False,     # Don't open a new window now
                 close=False,    # Don't close the plot
@@ -153,7 +153,7 @@ class Display:
     def display_graph(self, graph, demand=None, include_trajs=False, include_markers=False, show=True, m=None):
         nodes, edges = ox.convert.graph_to_gdfs(graph)
         if demand:
-            edges['color']=self.get_edge_c(demand.rx_helper.nx_graph)
+            edges['color']=self.get_edge_c(demand.calc_helper.nx_graph)
         m = edges.explore(
             tiles="cartodbdarkmatter",
             m=m if m else None,

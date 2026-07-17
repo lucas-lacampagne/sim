@@ -1,6 +1,7 @@
 import rustworkx as rx
 import networkx as nx
 import itertools as it
+import copy
 
 import logging
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ class rx_helper:
                     self.edge_nx_to_rx[(u, v, k)] = idx
                     break
         self.edge_rx_to_nx={v:k for k,v in self.edge_nx_to_rx.items()}
+        self.all_paths = self.calculate_all_shortest_paths()
 
     def add_edge(self, u, v, k, data):
         self.nx_graph.add_edge(u, v, k, **data)
@@ -73,7 +75,7 @@ class rx_helper:
         except (KeyError, TypeError):
             return False
 
-    def get_all_shortest_paths(self, weight:str='weight'):
+    def calculate_all_shortest_paths(self, weight:str='weight'):
         rx_paths={k:dict(v) for k,v in dict(rx.all_pairs_dijkstra_shortest_paths(
             self.rx_g,
             edge_cost_fn=lambda x:x.get(weight))).items()
@@ -81,6 +83,9 @@ class rx_helper:
         nx_rx_paths={self.map_id(k, self.rx_to_nx): self.map_id(v, self.rx_to_nx) for k,v in rx_paths.items()}
         return nx_rx_paths
 
-    def get_shortest_path(self, nx_source, nx_target, weight='weight'):
+    def calculate_shortest_path(self, nx_source, nx_target, weight='weight'):
         path = rx.dijkstra_shortest_paths(self.rx_g, self.nx_to_rx[nx_source], self.nx_to_rx[nx_target],weight_fn=lambda x:x.get(weight))
         return self.map_id(list(list(dict(path).values())[0]), self.rx_to_nx)
+    
+    def get_shortest_path(self, nx_source, nx_target, weight='weight'):
+        return copy.deepcopy(self.all_paths[nx_source][nx_target][0])

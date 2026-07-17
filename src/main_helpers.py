@@ -4,6 +4,7 @@ import numpy as np
 import itertools as it
 from src.display import Display
 from src.rustworkx_helper import rx_helper
+from src.routingkit_helper import rk_helper
 from src.car import Car
 import datetime
 import geopandas as gpd
@@ -39,12 +40,11 @@ In MultiDiGraph, selects the path with minimum weight.
 
 class Base_car_fleet:
     ## INIT METHODS
-    def __init__(self, graph, size=50, log_trajs:int=0):
+    def __init__(self, graph, helper:rx_helper|rk_helper, size=50, log_trajs:int=0):
         self.graph: nx.MultiDiGraph | nx.DiGraph = graph
         self.is_multi = type(graph)==nx.MultiDiGraph
-        self.rx_helper=rx_helper(self.graph)
+        self.calc_helper:rx_helper|rk_helper=helper(self.graph)
         self.display_h=Display()
-        self.all_paths = self.rx_helper.get_all_shortest_paths()
 
         cnt=0
         while True:
@@ -56,7 +56,7 @@ class Base_car_fleet:
         self.clock=datetime.datetime.now()
         self.log_trajs=log_trajs
 
-        self.fleet = [Car(self.graph, id, s, t, self.all_paths[s][t][0], nx.path_weight(self.graph, self.all_paths[s][t][0], 'weight')) for id, (s, t) in enumerate(trajs)]
+        self.fleet = [Car(self.graph, id, s, t, self.calc_helper.all_paths[s][t][0], nx.path_weight(self.graph, self.calc_helper.all_paths[s][t][0], 'weight')) for id, (s, t) in enumerate(trajs)]
         self.trajs = gpd.GeoDataFrame([(self.clock, car.loc, car.id) for car in self.fleet[:log_trajs]], columns=['t', 'geometry', 'trajectory_id'], crs=self.graph.graph['crs'])
         self.edges_state = {(car.dep, car.arr) :
             self.check_edges_along_path(car.path) for car in self.fleet
@@ -116,20 +116,20 @@ class Base_car_fleet:
         return {get_s_t(car):car.path for car in self.fleet if not car.completed}
 
     def get_edge_blocked(self):
-        return {(u,v):edge_data['weight']>2 for u,v,edge_data in list(self.rx_helper.nx_graph.edges(data=True))}
+        return {(u,v):edge_data['weight']>2 for u,v,edge_data in list(self.calc_helper.nx_graph.edges(data=True))}
         
     def get_path(self, node1, node2, weight) -> list: #Jamais None pck on bosse sur une seule composante
-        if nx.has_path(self.rx_helper.nx_graph, node1, node2):
-            return self.rx_helper.get_shortest_path(node1, node2, weight)
+        if nx.has_path(self.calc_helper.nx_graph, node1, node2):
+            return self.calc_helper.calculate_shortest_path(node1, node2, weight)
         elif nx.has_path(self.graph, node1, node2):
             path=nx.shortest_path(self.graph, node1, node2, weight)
             for k,u in enumerate(path, start=1):
-                if not nx.is_path(self.rx_helper.nx_graph, path[:k]): #Oriented ?
+                if not nx.is_path(self.calc_helper.nx_graph, path[:k]): #Oriented ?
                     break
             return path[:k-1]
     
     def get_cost(self, path, weight):
-        return nx.path_weight(self.rx_helper.nx_graph, path, weight)
+        return nx.path_weight(self.calc_helper.nx_graph, path, weight)
     
     def log_info(self, car):
         if car.cost>1000:
@@ -157,7 +157,7 @@ class Base_car_fleet:
                 continue
             
             if k<=dist: 
-                _, edge=select_min_weight_lane(self.rx_helper.nx_graph, u,v,'weight')
+                _, edge=select_min_weight_lane(self.calc_helper.nx_graph, u,v,'weight')
                 edges.append(edge['weight'])
         return edges
     
@@ -175,7 +175,7 @@ class Base_car_fleet:
                 if (s,t) in edges_state.keys():
                     edge_state=edges_state[(s,t)]
                     # Si on a cassé l'ancien chemin OU les arêtes ont changé d'état OU (path est vide ???)
-                    if not self.rx_helper.is_path(path) or self.check_edges_along_path(path, dist)!=edge_state[:dist] or all(path):
+                    if not self.calc_helper.is_path(path) or self.check_edges_along_path(path, dist)!=edge_state[:dist] or all(path):
                         to_calculate.append((s, t))
                 else:
                     to_calculate.append((s, t))
@@ -190,14 +190,14 @@ class Base_car_fleet:
         for s,t in to_calculate:
             path = self.get_path(s, t, weight='weight')
             self.edges_state[(s,t)] = self.check_edges_along_path(path)
-            self.all_paths[s][t] = [path]
-        return self.all_paths
+            self.calc_helper.all_paths[s][t] = [path]
+        return self.calc_helper.all_paths
 
     def handle_interactions(self, node1, node2, edge_id, demand_delta, new_weight, op)->False:
-        edge=self.rx_helper.nx_graph[node1][node2][edge_id]
+        edge=self.calc_helper.nx_graph[node1][node2][edge_id]
         edge['load']+=demand_delta
         if op(edge['load'], edge['capacity']):
-            self.rx_helper.update_edge(node1, node2, edge_id, 'weight', new_weight) # WORKS for DiGraph ?
+            self.calc_helper.update_edge(node1, node2, edge_id, 'weight', new_weight) # WORKS for DiGraph ?
         return False
 
     #HANDLE ATTACK
@@ -211,11 +211,11 @@ class Base_car_fleet:
         * 'minxdeg' for min degree computed by extremities product
         """
         print ("Preparing attack...", end="\r")
-        if attack=='ebc':
-            rx_edges = feature_based_attack(self.rx_helper.rx_g.copy(), l=number_steps*batch_size, attack_name=attack)
-            edges=[self.rx_helper.edge_rx_to_nx[rx_edge] for rx_edge in rx_edges]
+        if attack=='ebc' and type(self.calc_helper)==rx_helper:
+            rx_edges = feature_based_attack(self.calc_helper.rx_g.copy(), l=number_steps*batch_size, attack_name=attack)
+            edges=[self.calc_helper.edge_rx_to_nx[rx_edge] for rx_edge in rx_edges]
         else:
-            edges = feature_based_attack(self.rx_helper.nx_graph.copy(), l=number_steps*batch_size, attack_name=attack, 
+            edges = feature_based_attack(self.calc_helper.nx_graph.copy(), l=number_steps*batch_size, attack_name=attack, 
                                     #  igraph=ig.Graph.from_networkx(self.graph.copy())
                                     )
         self.rmvd_edges=[]
@@ -226,10 +226,10 @@ class Base_car_fleet:
 
     def launch_attack(self, end_step=30):
         def _attack(u,v,k):
-            if self.rx_helper.nx_graph.has_edge(u,v,k):
-                edge_data=self.rx_helper.nx_graph[u][v][k]
+            if self.calc_helper.nx_graph.has_edge(u,v,k):
+                edge_data=self.calc_helper.nx_graph[u][v][k]
                 edges_rmvd.append([(u,v,k), edge_data])
-                self.rx_helper.remove_edge(u,v,k)
+                self.calc_helper.remove_edge(u,v,k)
                 
         if self.to_rmv_edges:
             if self.step<end_step:
@@ -245,7 +245,7 @@ class Base_car_fleet:
             if self.step>launch_step:
                 edges=self.rmvd_edges.pop(0)
                 for (u,v,k), data in edges:
-                    self.rx_helper.add_edge(u,v,k,data)
+                    self.calc_helper.add_edge(u,v,k,data)
 
 
 class UnitTest:
@@ -263,19 +263,19 @@ class UnitTest:
         ## END TEST
     def test_load(self):
         try:
-            for u,v,k in self.demand.rx_helper.nx_graph.edges:
-                assert self.demand.rx_helper.nx_graph[u][v][k]['load']==0
+            for u,v,k in self.demand.calc_helper.nx_graph.edges:
+                assert self.demand.calc_helper.nx_graph[u][v][k]['load']==0
         except Exception as e:
             self.demand.display_h.display_huge(self.demand, cmap='prism')
             raise e
     
     def test_graph(self):
         try:
-            assert self.demand.rx_helper.nx_graph.number_of_edges()==self.demand.graph.number_of_edges()
-            assert self.demand.rx_helper.nx_graph.number_of_nodes()==self.demand.graph.number_of_nodes()
+            assert self.demand.calc_helper.nx_graph.number_of_edges()==self.demand.graph.number_of_edges()
+            assert self.demand.calc_helper.nx_graph.number_of_nodes()==self.demand.graph.number_of_nodes()
         except Exception as e:
-            print(self.demand.rx_helper.nx_graph.number_of_edges(), self.demand.graph.number_of_edges())
-            print(self.demand.rx_helper.nx_graph.number_of_nodes(), self.demand.graph.number_of_nodes())
+            print(self.demand.calc_helper.nx_graph.number_of_edges(), self.demand.graph.number_of_edges())
+            print(self.demand.calc_helper.nx_graph.number_of_nodes(), self.demand.graph.number_of_nodes())
             raise e
 
 
