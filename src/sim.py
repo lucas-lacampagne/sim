@@ -22,7 +22,6 @@ class Sim:
     @timeit
     def __init__(self, graph, helper:rx_helper|rk_helper, size=50, log_trajs:int=0):
         self.graph: nx.MultiDiGraph | nx.DiGraph = graph
-        self.is_multi = type(graph)==nx.MultiDiGraph
         self.display_h=Display()
 
         cnt=0
@@ -36,6 +35,7 @@ class Sim:
         self.log_trajs=log_trajs
 
         self.calc_helper:rx_helper|rk_helper=helper(self.graph, trajs)
+        self.fallback:rx_helper|rk_helper=helper(self.graph, trajs) #used with initial graph to compute fallback paths
         self.fleet = [Car(self.graph, id, s, t, path:=self.calc_helper.get_shortest_path(s, t), nx.path_weight(self.graph, path, 'weight')) for id, (s, t) in enumerate(trajs)]
         self.trajs = gpd.GeoDataFrame([(self.clock, car.loc, car.id) for car in self.fleet[:log_trajs]], columns=['t', 'geometry', 'trajectory_id'], crs=self.graph.graph['crs'])
         self.edges_state = {(car.dep, car.arr) :
@@ -145,11 +145,12 @@ class Sim:
                     to_calculate.append((s, t))
         return to_calculate
     
-    def get_path(self, node1, node2, weight) -> list: #Jamais None pck on bosse sur une seule composante
-        if nx.has_path(self.calc_helper.nx_graph, node1, node2):
-            return self.calc_helper.calculate_shortest_path(node1, node2, weight)
-        elif nx.has_path(self.graph, node1, node2):
-            path=nx.shortest_path(self.graph, node1, node2, weight)
+    def get_path(self, node1, node2, weight) -> list: 
+        if (path:=self.calc_helper.calculate_shortest_path(node1, node2, weight)) is not None and path!=[]:
+            return path
+        
+        #Jamais None pck on bosse sur une seule composante
+        elif (path:=self.fallback.calculate_shortest_path(node1, node2, weight)) is not None: 
             for k,u in enumerate(path, start=1):
                 if not nx.is_path(self.calc_helper.nx_graph, path[:k]): #Oriented ?
                     break

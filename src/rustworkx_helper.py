@@ -2,12 +2,10 @@ import rustworkx as rx
 import networkx as nx
 import itertools as it
 import copy
-
-import logging
-logger = logging.getLogger(__name__)
-logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.INFO)
+from src.utils import timeit
 
 class rx_helper:
+    @timeit
     def __init__(self, graph : nx.MultiDiGraph, trajs):
         self.nx_graph = graph.copy()
         self.rx_g:rx.PyDiGraph = rx.networkx_converter(graph, keep_attributes=True)
@@ -85,8 +83,11 @@ class rx_helper:
         return nx_rx_paths
 
     def calculate_shortest_path(self, nx_source, nx_target, weight='weight'):
-        path = rx.dijkstra_shortest_paths(self.rx_g, self.nx_to_rx[nx_source], self.nx_to_rx[nx_target],weight_fn=lambda x:x.get(weight))
-        return self.map_id(list(list(dict(path).values())[0]), self.rx_to_nx)
+        try:
+            path = rx.dijkstra_shortest_paths(self.rx_g, self.nx_to_rx[nx_source], self.nx_to_rx[nx_target],weight_fn=lambda x:x.get(weight))
+            return self.map_id(list(list(dict(path).values())[0]), self.rx_to_nx)
+        except:
+            return None
     
     def get_shortest_path(self, nx_source, nx_target, weight='weight'):
         return copy.deepcopy(self.all_paths[nx_source][nx_target][0])

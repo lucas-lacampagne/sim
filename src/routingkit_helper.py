@@ -2,8 +2,10 @@ import networkx as nx
 import routingkit_cch as rk
 import copy
 from collections import defaultdict
+from src.utils import timeit
 
 class rk_helper:
+    @timeit
     def __init__(self, graph : nx.MultiDiGraph, trajs, order='inertial'):
         self.nx_graph = graph.copy()
         self.rk_to_nx={k:v for k,v in enumerate(self.nx_graph.nodes)}
@@ -64,9 +66,12 @@ class rk_helper:
         return nx.is_path(self.nk_graph, path)
 
     def calculate_shortest_path(self, nx_source, nx_target, weight='weight'):
-        q = rk.CCHQuery(self.metric)
-        path = q.run(self.nx_to_rk[nx_source], self.nx_to_rk[nx_target]).node_path
-        return self.map_id(path, self.rk_to_nx)
+        try:
+            q = rk.CCHQuery(self.metric)
+            path = q.run(self.nx_to_rk[nx_source], self.nx_to_rk[nx_target]).node_path
+            return self.map_id(path, self.rk_to_nx)
+        except:
+            return None
     
     def get_shortest_path(self, nx_source, nx_target, weight='weight'):
         return copy.deepcopy(self.all_paths[nx_source][nx_target][0])

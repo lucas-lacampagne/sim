@@ -88,16 +88,13 @@ class Display:
                           [], #demand.get_arr(include_completed=False), 
                           'r', 'g', 'grey')
         node_size = {node:Count(demand.get_last_nodes_visited(include_completed=False))[node]**0.5*15 for node in list(demand.graph.nodes)}
-        if demand.is_multi:
-            edge_c = {(u,v,k):'y' if edge_data['load']>0 else 'grey' for u,v,k,edge_data in list(demand.graph.edges(keys=True,data=True))}
-            for u,v,k in edge_c.keys():
-                if edge_c[(u,v,k)]=='y':
-                    try:
-                        edge_c[(v,u,k)]=='y'
-                    except:
-                        pass
-        else:
-            edge_c = {(u,v):'y' if edge_data['weight']>2 else 'grey' for u,v,edge_data in list(demand.graph.edges(data=True))}
+        edge_c = {(u,v,k):'y' if edge_data['load']>0 else 'grey' for u,v,k,edge_data in list(demand.graph.edges(keys=True,data=True))}
+        for u,v,k in edge_c.keys():
+            if edge_c[(u,v,k)]=='y':
+                try:
+                    edge_c[(v,u,k)]=='y'
+                except:
+                    pass
         for edge in demand.info:
             edge_c[edge]='r'
         edge_alpha = {(u,v,k):1 if demand.calc_helper.nx_graph.has_edge(u,v,k) else 0. for u,v,k,edge_data in list(demand.graph.edges(keys=True,data=True))}
