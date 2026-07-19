@@ -27,11 +27,12 @@ class rx_helper:
         self.edge_rx_to_nx={v:k for k,v in self.edge_nx_to_rx.items()}
         self.all_paths = self.calculate_all_shortest_paths()
 
-    def add_edge(self, u, v, k, data):
+    def add_back_edge(self, u, v, k, data):
         self.nx_graph.add_edge(u, v, k, **data)
         rx_u, rx_v = self.nx_to_rx[u], self.nx_to_rx[v]
         rx_idx = self.rx_g.add_edge(rx_u, rx_v, data)
         self.edge_nx_to_rx[(u, v, k)] = rx_idx
+        self.edge_rx_to_nx[rx_idx]=(u,v,k)
 
     def remove_edge(self, u, v, k):
         self.nx_graph.remove_edge(u, v, k)

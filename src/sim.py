@@ -1,45 +1,25 @@
 import time
-import networkx as nx
+import datetime
+
 import numpy as np
+import pandas as pd
+import geopandas as gpd
+import networkx as nx
+from shapely import LineString
+
+import operator
 import itertools as it
+
 from src.display import Display
 from src.rustworkx_helper import rx_helper
 from src.routingkit_helper import rk_helper
 from src.car import Car
-import datetime
-import geopandas as gpd
-import pandas as pd
+from src.attack_helper import attack_helper
+from src.utils import select_min_weight_lane, timeit
 
-from src.attack.attack import feature_based_attack
-
-import logging
-logger = logging.getLogger(__name__)
-logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.INFO)
-
-def timeit(method):
-    def timed(*args, **kw):
-        ts = time.time()
-        result = method(*args, **kw)
-        te = time.time()
-        logging.info(f'{method.__name__} {(te - ts) * 1000 :.2f}')
-
-        return result
-    return timed
-
-def select_min_weight_lane(graph, node1, node2, weight='weight'):
-    """
-In MultiDiGraph, selects the path with minimum weight.
-    """   
-    lanes=graph[node1][node2]
-
-    if type(graph)==nx.MultiDiGraph:
-        selected_id=min(lanes, key=lambda k : lanes[k].get(weight))
-        return selected_id, lanes[selected_id]
-    else:
-        return None, lanes
-
-class Base_car_fleet:
+class Sim:
     ## INIT METHODS
+    @timeit
     def __init__(self, graph, helper:rx_helper|rk_helper, size=50, log_trajs:int=0):
         self.graph: nx.MultiDiGraph | nx.DiGraph = graph
         self.is_multi = type(graph)==nx.MultiDiGraph
@@ -61,6 +41,9 @@ class Base_car_fleet:
         self.edges_state = {(car.dep, car.arr) :
             self.check_edges_along_path(car.path) for car in self.fleet
         }
+
+        self.attack_helper=attack_helper(self.calc_helper)
+
         self.step=0
         self.info=[]
 
@@ -106,30 +89,11 @@ class Base_car_fleet:
     def all_completed(self):
         return all(self.get_completed())
     
-    def get_paths(self): # change to calculate paths from next_true node
-        def get_s_t(car):
-            # return (car.next_true_node, car.arr)
-            if car.next_true_node:
-                return (car.next_true_node, car.arr)
-            else:
-                return (car.last_true_node, car.arr)
-        return {get_s_t(car):car.path for car in self.fleet if not car.completed}
+    def get_paths(self):
+        return {(car.next_true_node, car.arr):car.path for car in self.fleet if not car.completed}
 
     def get_edge_blocked(self):
         return {(u,v):edge_data['weight']>2 for u,v,edge_data in list(self.calc_helper.nx_graph.edges(data=True))}
-        
-    def get_path(self, node1, node2, weight) -> list: #Jamais None pck on bosse sur une seule composante
-        if nx.has_path(self.calc_helper.nx_graph, node1, node2):
-            return self.calc_helper.calculate_shortest_path(node1, node2, weight)
-        elif nx.has_path(self.graph, node1, node2):
-            path=nx.shortest_path(self.graph, node1, node2, weight)
-            for k,u in enumerate(path, start=1):
-                if not nx.is_path(self.calc_helper.nx_graph, path[:k]): #Oriented ?
-                    break
-            return path[:k-1]
-    
-    def get_cost(self, path, weight):
-        return nx.path_weight(self.calc_helper.nx_graph, path, weight)
     
     def log_info(self, car):
         if car.cost>1000:
@@ -180,7 +144,20 @@ class Base_car_fleet:
                 else:
                     to_calculate.append((s, t))
         return to_calculate
-
+    
+    def get_path(self, node1, node2, weight) -> list: #Jamais None pck on bosse sur une seule composante
+        if nx.has_path(self.calc_helper.nx_graph, node1, node2):
+            return self.calc_helper.calculate_shortest_path(node1, node2, weight)
+        elif nx.has_path(self.graph, node1, node2):
+            path=nx.shortest_path(self.graph, node1, node2, weight)
+            for k,u in enumerate(path, start=1):
+                if not nx.is_path(self.calc_helper.nx_graph, path[:k]): #Oriented ?
+                    break
+            return path[:k-1]
+    
+    def get_cost(self, path, weight):
+        return nx.path_weight(self.calc_helper.nx_graph, path, weight)
+    
     @timeit
     def calculate_paths(self, dist):
         """
@@ -199,86 +176,92 @@ class Base_car_fleet:
         if op(edge['load'], edge['capacity']):
             self.calc_helper.update_edge(node1, node2, edge_id, 'weight', new_weight) # WORKS for DiGraph ?
         return False
-
-    #HANDLE ATTACK
-    def prepare_attack(self, attack='deg', batch_size=5, number_steps=30):
-        """
-        * 'ebc' for edge betweenness centrality
-        * 'rd' for random
-        * 'deg' for max degree computed by extremities sum
-        * 'xdeg' for max degree computed by extremities product
-        * 'mindeg' for min degree computed by extremities sum
-        * 'minxdeg' for min degree computed by extremities product
-        """
-        print ("Preparing attack...", end="\r")
-        if attack=='ebc' and type(self.calc_helper)==rx_helper:
-            rx_edges = feature_based_attack(self.calc_helper.rx_g.copy(), l=number_steps*batch_size, attack_name=attack)
-            edges=[self.calc_helper.edge_rx_to_nx[rx_edge] for rx_edge in rx_edges]
-        else:
-            edges = feature_based_attack(self.calc_helper.nx_graph.copy(), l=number_steps*batch_size, attack_name=attack, 
-                                    #  igraph=ig.Graph.from_networkx(self.graph.copy())
-                                    )
-        self.rmvd_edges=[]
-        self.to_rmv_edges = edges
-        self.to_rmv_edges = list(it.batched(self.to_rmv_edges, n=batch_size))
-        print ("Launching simulation", end="\r")
-
-
-    def launch_attack(self, end_step=30):
-        def _attack(u,v,k):
-            if self.calc_helper.nx_graph.has_edge(u,v,k):
-                edge_data=self.calc_helper.nx_graph[u][v][k]
-                edges_rmvd.append([(u,v,k), edge_data])
-                self.calc_helper.remove_edge(u,v,k)
-                
-        if self.to_rmv_edges:
-            if self.step<end_step:
-                edges=self.to_rmv_edges.pop(0)
-                edges_rmvd=[]
-                for (u,v,k) in edges:
-                    _attack(u,v,k)
-                    _attack(v,u,k)
-                self.rmvd_edges.append(edges_rmvd)
-
-    def repair_attack(self, launch_step=30):
-        if self.rmvd_edges:
-            if self.step>launch_step:
-                edges=self.rmvd_edges.pop(0)
-                for (u,v,k), data in edges:
-                    self.calc_helper.add_edge(u,v,k,data)
-
-
-class UnitTest:
-    def __init__(self, demand:Base_car_fleet):
-        self.demand=demand
-
-    def short_trajs(self):
-        self.demand
-        graph=self.demand.graph
-        dep_node=np.random.choice(list(graph.nodes), 1)[0]
-        next_node=list(graph.neighbors(dep_node))[0]
-        self.demand.fleet=[Car(self.demand.graph, dep_node, next_node, [dep_node, next_node], 0)]
-        self.demand.run(attack=False, repair=False)
-        
-        ## END TEST
-    def test_load(self):
-        try:
-            for u,v,k in self.demand.calc_helper.nx_graph.edges:
-                assert self.demand.calc_helper.nx_graph[u][v][k]['load']==0
-        except Exception as e:
-            self.demand.display_h.display_huge(self.demand, cmap='prism')
-            raise e
     
-    def test_graph(self):
-        try:
-            assert self.demand.calc_helper.nx_graph.number_of_edges()==self.demand.graph.number_of_edges()
-            assert self.demand.calc_helper.nx_graph.number_of_nodes()==self.demand.graph.number_of_nodes()
-        except Exception as e:
-            print(self.demand.calc_helper.nx_graph.number_of_edges(), self.demand.graph.number_of_edges())
-            print(self.demand.calc_helper.nx_graph.number_of_nodes(), self.demand.graph.number_of_nodes())
-            raise e
+    def move(self, car: Car, time_step: float = 20):
+        """
+    Moves a car along its path for a given time step.
+    Handles edge transitions, interaction updates (load increments/decrements),
+    and path completion.
+        """
+        time_remaining = time_step
+        speed = 50 / 3.6  # m/s
 
+        while time_remaining > 0 :
 
-    def run(self):
-        self.test_load()
-        self.test_graph()
+            # Si l'arête E_k sur laquelle t'étais censée passer existe plus, arrête toi
+            if not self.calc_helper.nx_graph.has_edge(car.last_true_node, car.next_true_node, car.next_edge_key):
+                break
+
+            edge = self.calc_helper.nx_graph[car.last_true_node][car.next_true_node][car.next_edge_key]
+            geom: LineString = edge['geometry']
+            
+            dist_from_start = geom.project(car.loc)
+            dist_to_go = speed * time_remaining
+            new_dist = dist_from_start + dist_to_go
+
+            # Si tu vas aller plus loin que le prochain noeud
+            if new_dist >= geom.length:
+                time_used = (geom.length - dist_from_start) / speed
+                time_remaining -= time_used
+
+                # Si tu sais où aller après le prochain noeud, check quelle arête E_k+1 tu vas prendre
+                if len(car.path)>1: 
+                    next_edge_key, _ = select_min_weight_lane(
+                                self.calc_helper.nx_graph, car.next_true_node, car.path[1], 'weight' 
+                            )
+                    
+                # Si ton prochain noeud c'est l'arrivée, y a pas de prochaine arête, vas-y
+                elif car.next_true_node==car.arr: 
+                    if not car.first_step:
+                        self.handle_interactions(car.last_true_node, car.next_true_node,
+                            car.next_edge_key, -1, 1, op=operator.lt)
+                    car.go_to_next_true_node(self.calc_helper.nx_graph)
+                    car.log_traj(self.log_trajs, self.clock+datetime.timedelta(seconds=time_step-time_remaining))
+                    break
+
+                # Si l'arête E_k+1 n'existe pas car bloquée, arrête toi au bout de la route
+                else:
+                    car.loc = geom.interpolate(geom.length)
+                    car.log_traj(self.log_trajs, self.clock+datetime.timedelta(seconds=time_step-time_remaining))
+                    break
+
+                if not car.first_step:
+                    car.first_step=self.handle_interactions(car.last_true_node, car.next_true_node,
+                                            car.next_edge_key, -1, 1, op=operator.lt)
+                
+                road = car.go_to_next_true_node(self.calc_helper.nx_graph)
+                car.log_traj(self.log_trajs, self.clock+datetime.timedelta(seconds=time_step-time_remaining))
+                car.first_step=False
+                
+                car.next_edge_key = next_edge_key
+                self.handle_interactions(car.last_true_node, car.next_true_node,
+                                        car.next_edge_key, 1, 10000, op=operator.ge)
+            # Si tu vas pas plus loin que le prochain noeud, avance sur l'arête E_k
+            else:
+                if car.first_step:
+                    car.first_step=self.handle_interactions(car.last_true_node, car.next_true_node, car.next_edge_key, 1, 10000, op=operator.ge)
+                car.loc = geom.interpolate(new_dist)
+                car.log_traj(self.log_trajs, self.clock+datetime.timedelta(seconds=time_step-time_remaining))
+                time_remaining = 0
+
+        return car.loc
+    
+    @timeit
+    def update_fleet(self, time_step):
+        """
+    Updates car states and handles interactions during displacement.
+        """
+        for car in self.get_fleet(include_completed=False):
+            car.reset_traj()
+            # On recalcule pas le chemin à un pas de l'arrivée si on sait où on va
+            if car.next_true_node!=car.arr:
+                path = self.calc_helper.get_shortest_path(car.next_true_node, car.arr)
+                car.path=path
+                car.cost=self.get_cost(path, 'weight')
+                self.log_info(car)
+            
+            # Bouge
+            point=self.move(car, time_step)
+
+            # On supprime pas l'ancien état puisque deux voitures peuvent se suivre
+            self.edges_state[(car.next_true_node, car.arr)]=self.check_edges_along_path(car.path)

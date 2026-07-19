@@ -31,19 +31,17 @@ class rk_helper:
         for s,t in trajs:
             self.all_paths[s][t]=[self.calculate_shortest_path(s,t)]
 
-    # def add_edge(self, u, v, k, data):
-    #     self.tail.append(u)
-    #     self.head.append(v)
-    #     self.weights.append(data['weight'])
+    def add_back_edge(self, u, v, k, data):
+        self.nx_graph.add_edge(u, v, k, **data)
+        rk_idx = self.edge_nx_to_rk[(u, v, k)]
+        # self.weights[rk_idx]=1 #reset
+        self.updater.apply(self.metric, {rk_idx:1})
 
-    #     # rx_u, rx_v = self.nx_to_rx[u], self.nx_to_rx[v]
-    #     # rx_idx = self.rx_g.add_edge(rx_u, rx_v, data)
-    #     # self.edge_nx_to_rx[(u, v, k)] = rx_idx
-
-    # def remove_edge(self, u, v, k):
-    #     self.nk_graph.remove_edge(u, v, k)
-    #     rx_idx = self.edge_nx_to_rx.pop((u, v, k))
-    #     self.rx_g.remove_edge_from_index(rx_idx)
+    def remove_edge(self, u, v, k):
+        self.nx_graph.remove_edge(u, v, k)
+        rk_idx = self.edge_nx_to_rk[(u, v, k)]
+        # self.weights[rk_idx]=2147483647 #INF_WEIGHT
+        self.updater.apply(self.metric, {rk_idx:2147483647})
 
     def reset_all_paths(self):
         self.all_paths=defaultdict(dict)

@@ -4,7 +4,7 @@ import networkx as nx
 import rustworkx as rx
 import random as rd
 from math import inf
-from src.utils import networkx2adjacency
+from src.attack.utils import networkx2adjacency
 
 
 def edge_betweenness_centrality_ig(igraph: ig.Graph, approx: int, weight: bool):
