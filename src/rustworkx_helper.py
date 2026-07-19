@@ -2,13 +2,11 @@ import rustworkx as rx
 import networkx as nx
 import itertools as it
 import copy
-
-import logging
-logger = logging.getLogger(__name__)
-logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.INFO)
+from src.utils import timeit
 
 class rx_helper:
-    def __init__(self, graph : nx.MultiDiGraph):
+    @timeit
+    def __init__(self, graph : nx.MultiDiGraph, trajs):
         self.nx_graph = graph.copy()
         self.rx_g:rx.PyDiGraph = rx.networkx_converter(graph, keep_attributes=True)
         self.rx_to_nx={node_id : node['__networkx_node__']
@@ -27,11 +25,12 @@ class rx_helper:
         self.edge_rx_to_nx={v:k for k,v in self.edge_nx_to_rx.items()}
         self.all_paths = self.calculate_all_shortest_paths()
 
-    def add_edge(self, u, v, k, data):
+    def add_back_edge(self, u, v, k, data):
         self.nx_graph.add_edge(u, v, k, **data)
         rx_u, rx_v = self.nx_to_rx[u], self.nx_to_rx[v]
         rx_idx = self.rx_g.add_edge(rx_u, rx_v, data)
         self.edge_nx_to_rx[(u, v, k)] = rx_idx
+        self.edge_rx_to_nx[rx_idx]=(u,v,k)
 
     def remove_edge(self, u, v, k):
         self.nx_graph.remove_edge(u, v, k)
@@ -84,8 +83,11 @@ class rx_helper:
         return nx_rx_paths
 
     def calculate_shortest_path(self, nx_source, nx_target, weight='weight'):
-        path = rx.dijkstra_shortest_paths(self.rx_g, self.nx_to_rx[nx_source], self.nx_to_rx[nx_target],weight_fn=lambda x:x.get(weight))
-        return self.map_id(list(list(dict(path).values())[0]), self.rx_to_nx)
+        try:
+            path = rx.dijkstra_shortest_paths(self.rx_g, self.nx_to_rx[nx_source], self.nx_to_rx[nx_target],weight_fn=lambda x:x.get(weight))
+            return self.map_id(list(list(dict(path).values())[0]), self.rx_to_nx)
+        except:
+            return None
     
     def get_shortest_path(self, nx_source, nx_target, weight='weight'):
         return copy.deepcopy(self.all_paths[nx_source][nx_target][0])
