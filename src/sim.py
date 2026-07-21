@@ -20,7 +20,7 @@ from src.utils import select_min_weight_lane, timeit
 class Sim:
     ## INIT METHODS
     @timeit
-    def __init__(self, graph, helper:rx_helper|rk_helper, size=50, log_trajs:int=0):
+    def __init__(self, graph, helper:rx_helper|rk_helper, attack, repair, size=50, log_trajs:int=0):
         self.graph: nx.MultiDiGraph | nx.DiGraph = graph
         self.display_h=Display()
 
@@ -37,12 +37,16 @@ class Sim:
         self.calc_helper:rx_helper|rk_helper=helper(self.graph, trajs)
         self.fallback:rx_helper|rk_helper=helper(self.graph, trajs) #used with initial graph to compute fallback paths
         self.fleet = [Car(self.graph, id, s, t, path:=self.calc_helper.get_shortest_path(s, t), nx.path_weight(self.graph, path, 'weight')) for id, (s, t) in enumerate(trajs)]
-        self.trajs = gpd.GeoDataFrame([(self.clock, car.loc, car.id) for car in self.fleet[:log_trajs]], columns=['t', 'geometry', 'trajectory_id'], crs=self.graph.graph['crs'])
+        self.trajs = gpd.GeoDataFrame([(self.clock, car.loc, car.id, 0) for car in self.fleet[:log_trajs]], columns=['t', 'geometry', 'trajectory_id', 'load'], crs=self.graph.graph['crs'])
         self.edges_state = {(car.dep, car.arr) :
             self.check_edges_along_path(car.path) for car in self.fleet
         }
 
-        self.attack_helper=attack_helper(self.calc_helper)
+        self.attack=attack
+        self.repair=repair
+        if attack:
+            self.attack_helper=attack_helper(self.calc_helper)
+            self.attack_helper.prepare_attack(attack='deg', batch_size=1, number_steps=30)
 
         self.step=0
         self.info=[]
@@ -86,6 +90,10 @@ class Sim:
         else:
             return [car for car in self.fleet if not car.completed]
         
+    def get_congestion(self, car:Car):
+        if not car.completed:
+            return self.calc_helper.nx_graph[car.last_true_node][car.next_true_node][car.next_edge_key]['load']/self.calc_helper.nx_graph[car.last_true_node][car.next_true_node][car.next_edge_key]['capacity']
+        
     def all_completed(self):
         return all(self.get_completed())
     
@@ -107,9 +115,9 @@ class Sim:
     def format_trajs_step(self):
         l=[]
         for car in self.get_fleet(include_completed=False)[:self.log_trajs]:
-            for t, geom in car.traj:
-                l.append((t, geom, car.id))
-        return gpd.GeoDataFrame(l, columns=['t', 'geometry', 'trajectory_id'], crs=self.graph.graph['crs'])
+            for t, geom, load in car.traj:
+                l.append((t, geom, car.id, load))
+        return gpd.GeoDataFrame(l, columns=['t', 'geometry', 'trajectory_id', 'load'], crs=self.graph.graph['crs'])
 
     
     ## LOGIC METHODS    
@@ -217,13 +225,13 @@ class Sim:
                         self.handle_interactions(car.last_true_node, car.next_true_node,
                             car.next_edge_key, -1, 1, op=operator.lt)
                     car.go_to_next_true_node(self.calc_helper.nx_graph)
-                    car.log_traj(self.log_trajs, self.clock+datetime.timedelta(seconds=time_step-time_remaining))
+                    # car.log_traj(self.log_trajs, self.clock+datetime.timedelta(seconds=time_step-time_remaining), 0)
                     break
 
                 # Si l'arête E_k+1 n'existe pas car bloquée, arrête toi au bout de la route
                 else:
                     car.loc = geom.interpolate(geom.length)
-                    car.log_traj(self.log_trajs, self.clock+datetime.timedelta(seconds=time_step-time_remaining))
+                    # car.log_traj(self.log_trajs, self.clock+datetime.timedelta(seconds=time_step-time_remaining), self.get_congestion(car))
                     break
 
                 if not car.first_step:
@@ -231,18 +239,19 @@ class Sim:
                                             car.next_edge_key, -1, 1, op=operator.lt)
                 
                 road = car.go_to_next_true_node(self.calc_helper.nx_graph)
-                car.log_traj(self.log_trajs, self.clock+datetime.timedelta(seconds=time_step-time_remaining))
                 car.first_step=False
                 
                 car.next_edge_key = next_edge_key
                 self.handle_interactions(car.last_true_node, car.next_true_node,
                                         car.next_edge_key, 1, 10000, op=operator.ge)
+                
+                # car.log_traj(self.log_trajs, self.clock+datetime.timedelta(seconds=time_step-time_remaining), self.get_congestion(car))
             # Si tu vas pas plus loin que le prochain noeud, avance sur l'arête E_k
             else:
                 if car.first_step:
                     car.first_step=self.handle_interactions(car.last_true_node, car.next_true_node, car.next_edge_key, 1, 10000, op=operator.ge)
                 car.loc = geom.interpolate(new_dist)
-                car.log_traj(self.log_trajs, self.clock+datetime.timedelta(seconds=time_step-time_remaining))
+                # car.log_traj(self.log_trajs, self.clock+datetime.timedelta(seconds=time_step-time_remaining), self.get_congestion(car))
                 time_remaining = 0
 
         return car.loc
@@ -263,6 +272,7 @@ class Sim:
             
             # Bouge
             point=self.move(car, time_step)
+            car.log_traj(self.log_trajs, self.clock, self.get_congestion(car))
 
             # On supprime pas l'ancien état puisque deux voitures peuvent se suivre
             self.edges_state[(car.next_true_node, car.arr)]=self.check_edges_along_path(car.path)

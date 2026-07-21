@@ -11,6 +11,8 @@ import time
 import copy
 import pandas as pd
 import movingpandas as mpd
+from folium.plugins import HeatMapWithTime
+import itertools as it
 
 import logging
 logger = logging.getLogger(__name__)
@@ -78,6 +80,16 @@ class Display:
         df_copy['t']=pd.to_datetime(df_copy['t'])
         df_copy['trajectory_id']=df_copy['trajectory_id'].astype('str')
         return df_copy
+    
+    def format_string(self, demand):
+        string=f'''
+Completed: {sum(demand.get_completed())} of {len(demand.fleet)}
+Blocked by traffic: {sum(demand.get_edge_blocked().values())} of {demand.graph.number_of_edges()}
+'''
+        if demand.attack:
+            string+=f'Blocked by attack: {len(list(it.chain.from_iterable(demand.attack_helper.rmvd_edges)))}'
+        string+=f'High cost paths: {len(demand.info)}'
+        return string
     
     @timeit
     def display(self, demand, ax):
@@ -205,3 +217,29 @@ class Display:
                 ).add_to(map)
         self.show_folium_safe(map)
         return map
+
+    def display_heatmap(self, demand, show=True):
+        df=demand.trajs.rename(columns={'load':'weight'}).sort_values(by=['t', 'trajectory_id'])
+        df['t']=pd.to_datetime(df['t'])
+        df=df.to_crs('4326')
+
+        times=sorted(list(set(df['t'])))
+        data=[]
+        for t in times:
+            t_list=[]
+            for id, row in df[df['t']==t].iterrows():
+                t_list.append([row['geometry'].y, row['geometry'].x, row['weight']])
+            data.append(t_list)
+
+        times=[time.strftime("%H:%m:%s") for time in times]
+        m = folium.Map([data[0][0][0], data[0][0][1]], zoom_start=14)
+
+        hm = HeatMapWithTime(data, 
+                            times,
+                            radius = 6,
+                            blur = 0.7,
+                            min_speed= 2,
+                            ).add_to(m)
+        if show:
+            self.show_folium_safe(m)
+        return m

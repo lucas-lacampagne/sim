@@ -22,7 +22,7 @@ class preprocessing:
             attrs_e = {(u, v, k): {
                 'load': 0, 
                 'weight': 1, 
-                'capacity': np.random.randint(5,10)
+                'capacity': 10
                 }
             }
             nx.set_edge_attributes(self.graph, attrs_e)
