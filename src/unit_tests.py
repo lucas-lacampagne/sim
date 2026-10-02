@@ -19,7 +19,7 @@ class UnitTest:
             for u,v,k in self.demand.calc_helper.nx_graph.edges:
                 assert self.demand.calc_helper.nx_graph[u][v][k]['load']==0
         except Exception as e:
-            self.demand.display_h.display_huge(self.demand, cmap='prism')
+            self.demand.display_h.display_graph(self.demand.calc_helper.nx_graph, self.demand)
             raise e
     
     def test_graph(self):

@@ -3,6 +3,7 @@ import networkx as nx
 import numpy as np
 import osmnx as ox
 from matplotlib import colormaps
+from matplotlib import colors
 
 import folium
 from IPython.display import IFrame, display
@@ -72,7 +73,7 @@ class Display:
         edge_load = {(u,v,k):edge_data['load']/edge_data['capacity'] for u,v,k,edge_data in list(graph.edges(keys=True,data=True))}
         edge_c=sorted(list(set(edge_load.values())))
         edge_c={load:color for load,color in zip(edge_c, cmap(edge_c))}
-        return {k:edge_c[load] for k,load in edge_load.items()}
+        return {k:colors.to_hex(edge_c[load]) for k,load in edge_load.items()}
     
     def transform_df(self, df):
         df_copy=copy.deepcopy(df)
@@ -164,10 +165,11 @@ Blocked by traffic: {sum(demand.get_edge_blocked().values())} of {demand.graph.n
         if demand:
             edges['color']=self.get_edge_c(demand.calc_helper.nx_graph)
         m = edges.explore(
-            tiles="cartodbdarkmatter",
-            m=m if m else None,
-            color='color' if demand else None
-        )
+                m=m if m else None,
+                style_kwds={
+                    'style_function': lambda x: {"color":x['properties']['color']}
+                    } if demand else None
+            )
         map=nodes.explore(
             m=m,
             marker_kwds={"radius": 3}
