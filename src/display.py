@@ -231,8 +231,12 @@ Blocked by traffic: {sum(demand.get_edge_blocked().values())} of {demand.graph.n
                 t_list.append([row['geometry'].y, row['geometry'].x, row['weight']])
             data.append(t_list)
 
-        times=[time.strftime("%H:%m:%s") for time in times]
-        m = folium.Map([data[0][0][0], data[0][0][1]], zoom_start=14)
+        times=[time.strftime("%H:%M:%S") for time in times]
+        m = folium.Map(
+                [data[0][0][0], data[0][0][1]], 
+                zoom_start=14, 
+                tiles='OpenStreetMap'
+            )
 
         hm = HeatMapWithTime(data, 
                             times,
