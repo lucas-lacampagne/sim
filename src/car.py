@@ -37,7 +37,7 @@ class Car:
 
     def log_traj(self, log_trajs, time, load):
         if self.id<log_trajs:
-            self.traj.append((time, self.loc, load))
+            self.traj.append((time, self.loc, (self.last_true_node, self.next_true_node, self.next_edge_key), load))
 
     def reset_traj(self):
         self.traj=[]

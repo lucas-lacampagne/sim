@@ -68,12 +68,24 @@ class Display:
             np.random.shuffle(self.colors)
         pass
 
-    def get_edge_c(self, graph, cmap='RdYlGn_r'):
+    def get_edge_c(self, graph, values:pd.Series=False, cmap='RdYlGn_r'):
         cmap=colormaps[cmap]
-        edge_load = {(u,v,k):edge_data['load']/edge_data['capacity'] for u,v,k,edge_data in list(graph.edges(keys=True,data=True))}
-        edge_c=sorted(list(set(edge_load.values())))
-        edge_c={load:color for load,color in zip(edge_c, cmap(edge_c))}
-        return {k:colors.to_hex(edge_c[load]) for k,load in edge_load.items()}
+        if type(values)==bool and values==False:
+            edge_values = {(u,v,k):edge_data['load']/edge_data['capacity'] for u,v,k,edge_data in list(graph.edges(keys=True,data=True))}
+            norm_edge_values = edge_values
+        else:
+            norm = colors.Normalize(vmin=0, vmax=values.max())
+            edge_values = {(u,v,k):values[(u,v,k)] if (u,v,k) in values.keys() else 0 for u,v,k,edge_data in list(graph.edges(keys=True,data=True))}
+            norm_edge_values = {(u,v,k):norm(values[(u,v,k)]) if (u,v,k) in values.keys() else 0 for u,v,k,edge_data in list(graph.edges(keys=True,data=True))}
+        
+        edge_unique_values=sorted(list(set(norm_edge_values.values())))
+        value_to_color={load:color for load, color in zip(edge_unique_values, cmap(edge_unique_values))}
+        return {k:colors.to_hex(value_to_color[load]) for k,load in norm_edge_values.items()}, edge_values
+
+    def trajs_to_count(self, trajs):
+        df=trajs.sort_values(by='trajectory_id').reset_index(drop=True)
+        df=df.loc[df['edge'].shift(-1) != df['edge']]
+        return df['edge'].value_counts()
     
     def transform_df(self, df):
         df_copy=copy.deepcopy(df)
@@ -160,10 +172,13 @@ Blocked by traffic: {sum(demand.get_edge_blocked().values())} of {demand.graph.n
         display(IFrame(src=data_uri, width="100%", height=height), clear=True)
 
     @timeit
-    def display_graph(self, graph, demand=None, include_trajs=False, include_markers=False, show=True, m=None):
+    def display_graph(self, graph, demand=None, values:pd.Series=False, include_trajs=False, include_markers=False, show=True, m=None):
+        """
+        values : Series with (u,v,k) as keys and edge value (for example vehicle count)
+        """
         nodes, edges = ox.convert.graph_to_gdfs(graph)
         if demand:
-            edges['color']=self.get_edge_c(demand.calc_helper.nx_graph)
+            edges['color'], edges['value_displayed']=self.get_edge_c(demand.calc_helper.nx_graph, values)
         m = edges.explore(
                 m=m if m else None,
                 style_kwds={
@@ -192,7 +207,6 @@ Blocked by traffic: {sum(demand.get_edge_blocked().values())} of {demand.graph.n
         if show:
             self.show_folium_safe(map)
         return map
-    
 
     def highlight_node(self, graph, node, markers=None):
         nodes, edges = ox.convert.graph_to_gdfs(nx.ego_graph(graph, node, radius=2))

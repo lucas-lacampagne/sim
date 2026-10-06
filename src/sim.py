@@ -37,7 +37,7 @@ class Sim:
         self.calc_helper:rx_helper|rk_helper=helper(self.graph, trajs)
         self.fallback:rx_helper|rk_helper=helper(self.graph, trajs) #used with initial graph to compute fallback paths
         self.fleet = [Car(self.graph, id, s, t, path:=self.calc_helper.get_shortest_path(s, t), nx.path_weight(self.graph, path, 'weight')) for id, (s, t) in enumerate(trajs)]
-        self.trajs = gpd.GeoDataFrame([(self.clock, car.loc, car.id, 0) for car in self.fleet[:log_trajs]], columns=['t', 'geometry', 'trajectory_id', 'load'], crs=self.graph.graph['crs'])
+        self.trajs = gpd.GeoDataFrame([(self.clock, car.loc, car.id, (None, None, None), 0) for car in self.fleet[:log_trajs]], columns=['t', 'geometry', 'trajectory_id', 'edge', 'load'], crs=self.graph.graph['crs'])
         self.edges_state = {(car.dep, car.arr) :
             self.check_edges_along_path(car.path) for car in self.fleet
         }
@@ -115,9 +115,9 @@ class Sim:
     def format_trajs_step(self):
         l=[]
         for car in self.get_fleet(include_completed=False)[:self.log_trajs]:
-            for t, geom, load in car.traj:
-                l.append((t, geom, car.id, load))
-        return gpd.GeoDataFrame(l, columns=['t', 'geometry', 'trajectory_id', 'load'], crs=self.graph.graph['crs'])
+            for t, geom, (u, v, k), load in car.traj:
+                l.append((t, geom, car.id, (u, v, k), load))
+        return gpd.GeoDataFrame(l, columns=['t', 'geometry', 'trajectory_id', 'edge', 'load'], crs=self.graph.graph['crs'])
 
     
     ## LOGIC METHODS    
