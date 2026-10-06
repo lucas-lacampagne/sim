@@ -263,16 +263,18 @@ class Sim:
         """
         for car in self.get_fleet(include_completed=False):
             car.reset_traj()
-            # On recalcule pas le chemin à un pas de l'arrivée si on sait où on va
-            if car.next_true_node!=car.arr:
-                path = self.calc_helper.get_shortest_path(car.next_true_node, car.arr)
-                car.path=path
-                car.cost=self.get_cost(path, 'weight')
-                self.log_info(car)
-            
-            # Bouge
-            point=self.move(car, time_step)
-            car.log_traj(self.log_trajs, self.clock, self.get_congestion(car))
+            # On check si l'attaque a pas enelvé l'arête sur laquelle on était
+            if self.calc_helper.nx_graph.has_edge(car.last_true_node, car.next_true_node, car.next_edge_key):
+                # On recalcule pas le chemin à un pas de l'arrivée si on sait où on va
+                if car.next_true_node!=car.arr:
+                    path = self.calc_helper.get_shortest_path(car.next_true_node, car.arr)
+                    car.path=path
+                    car.cost=self.get_cost(path, 'weight')
+                    self.log_info(car)
+                
+                # Bouge
+                point=self.move(car, time_step)
+                car.log_traj(self.log_trajs, self.clock, self.get_congestion(car))
 
-            # On supprime pas l'ancien état puisque deux voitures peuvent se suivre
-            self.edges_state[(car.next_true_node, car.arr)]=self.check_edges_along_path(car.path)
+                # On supprime pas l'ancien état puisque deux voitures peuvent se suivre
+                self.edges_state[(car.next_true_node, car.arr)]=self.check_edges_along_path(car.path)
