@@ -20,7 +20,7 @@ from src.utils import select_min_weight_lane, timeit
 class Sim:
     ## INIT METHODS
     @timeit
-    def __init__(self, graph, helper:rx_helper|rk_helper, attack, repair, size=50, log_trajs:int=0):
+    def __init__(self, graph, helper:rx_helper|rk_helper, attack:dict|None, repair:dict, size=50, log_trajs:int=0):
         self.graph: nx.MultiDiGraph | nx.DiGraph = graph
         self.display_h=Display()
 
@@ -46,7 +46,7 @@ class Sim:
         self.repair=repair
         if attack:
             self.attack_helper=attack_helper(self.calc_helper)
-            self.attack_helper.prepare_attack(attack='deg', batch_size=1, number_steps=30)
+            self.attack_helper.prepare_attack(attack=attack['strategy'], batch_size=attack['batch_size'], number_steps=attack['end_step'])
 
         self.step=0
         self.info=[]
