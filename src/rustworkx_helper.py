@@ -6,9 +6,14 @@ from src.utils import timeit
 
 class rx_helper:
     @timeit
-    def __init__(self, graph : nx.MultiDiGraph, trajs):
+    def __init__(self, graph : nx.MultiDiGraph, trajs:list|None):
         self.nx_graph = graph.copy()
         self.rx_g:rx.PyDiGraph = rx.networkx_converter(graph, keep_attributes=True)
+        self.get_mapping()
+        if trajs is not None:
+            self.all_paths = self.calculate_all_shortest_paths()
+
+    def get_mapping(self):
         self.rx_to_nx={node_id : node['__networkx_node__']
             for node_id, node in zip(self.rx_g.node_indices(), self.rx_g.nodes())
         }

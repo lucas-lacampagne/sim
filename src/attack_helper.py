@@ -18,9 +18,13 @@ class attack_helper:
         * 'minxdeg' for min degree computed by extremities product
         """
         print ("Preparing attack...", end="\r")
-        if attack=='ebc' and type(self.calc_helper)==rx_helper:
-            rx_edges = feature_based_attack(self.calc_helper.rx_g.copy(), l=number_steps*batch_size, attack_name=attack)
-            edges=[self.calc_helper.edge_rx_to_nx[rx_edge] for rx_edge in rx_edges]
+        if attack=='ebc':
+            if type(self.calc_helper)==rx_helper:
+                helper=self.calc_helper
+            else:
+                helper=rx_helper(self.calc_helper.nx_graph, None)
+            rx_edges = feature_based_attack(helper.rx_g.copy(), l=number_steps*batch_size, attack_name=attack)
+            edges=[helper.edge_rx_to_nx[rx_edge] for rx_edge in rx_edges]
         else:
             edges = feature_based_attack(self.calc_helper.nx_graph.copy(), l=number_steps*batch_size, attack_name=attack, 
                                     #  igraph=ig.Graph.from_networkx(self.graph.copy())
