@@ -172,7 +172,7 @@ Blocked by traffic: {sum(demand.get_edge_blocked().values())} of {demand.graph.n
         display(IFrame(src=data_uri, width="100%", height=height), clear=True)
 
     @timeit
-    def display_graph(self, graph, demand=None, values:pd.Series=False, norm_func=colors.Normalize, include_trajs=False, include_markers=False, show=True, m=None):
+    def display_graph(self, graph, demand=None, values:pd.Series=False, norm_func=colors.Normalize, tiles=True, include_trajs=False, include_markers=False, show=True, m=None):
         """
         values : Series with (u,v,k) as keys and edge value (for example vehicle count)
         """
@@ -183,7 +183,9 @@ Blocked by traffic: {sum(demand.get_edge_blocked().values())} of {demand.graph.n
                 m=m if m else None,
                 style_kwds={
                     'style_function': lambda x: {"color":x['properties']['color']}
-                    } if demand else None
+                    } if demand else None,
+                tiles = "OpenStreetMap" if tiles else None,
+                
             )
         map=nodes.explore(
             m=m,
