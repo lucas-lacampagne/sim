@@ -21,13 +21,13 @@ from src.demand import trajs_rdm
 class Sim:
     ## INIT METHODS
     @timeit
-    def __init__(self, graph, helper:rx_helper|rk_helper, attack:dict|None, repair:dict, size=50, log_trajs:int=0):
+    def __init__(self, graph, helper:rx_helper|rk_helper, attack:dict|None, repair:dict, init_trajs:dict, log_trajs:int=0):
         self.graph: nx.MultiDiGraph | nx.DiGraph = graph
         self.display_h=Display()
 
         cnt=0
         while True:
-            trajs = trajs_rdm(self.graph, size)
+            trajs = init_trajs['func'](self.graph, init_trajs['args'])
             if all(nx.has_path(graph, s, t) for s, t in trajs):
                 break
             cnt+=1
