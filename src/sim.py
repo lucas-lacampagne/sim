@@ -16,6 +16,7 @@ from src.routingkit_helper import rk_helper
 from src.car import Car
 from src.attack_helper import attack_helper
 from src.utils import select_min_weight_lane, timeit
+from src.demand import trajs_rdm
 
 class Sim:
     ## INIT METHODS
@@ -26,7 +27,7 @@ class Sim:
 
         cnt=0
         while True:
-            trajs = self.init_trajs(size)
+            trajs = trajs_rdm(self.graph, size)
             if all(nx.has_path(graph, s, t) for s, t in trajs):
                 break
             cnt+=1
@@ -50,10 +51,6 @@ class Sim:
 
         self.step=0
         self.info=[]
-
-    def init_trajs(self, size):
-        nodes_list=list(self.graph.nodes)
-        return [np.random.choice(nodes_list, 2, False) for _ in range(size)]
 
     def __repr__(self):
         return f'{self.fleet}'
