@@ -68,8 +68,7 @@ class Display:
             np.random.shuffle(self.colors)
         pass
 
-    def get_edge_c(self, graph, values:pd.Series=False, cmap='RdYlGn_r', norm_func=colors.Normalize):
-        cmap=colormaps[cmap]
+    def get_edge_values(self, graph, values:pd.Series=False, norm_func=colors.Normalize):
         if type(values)==bool and values==False:
             edge_values = {(u,v,k):edge_data['load']/edge_data['capacity'] for u,v,k,edge_data in list(graph.edges(keys=True,data=True))}
             norm_edge_values = edge_values
@@ -77,6 +76,11 @@ class Display:
             norm = norm_func(vmin=0, vmax=values.max())
             edge_values = {(u,v,k):values[(u,v,k)] if (u,v,k) in values.keys() else 0 for u,v,k,edge_data in list(graph.edges(keys=True,data=True))}
             norm_edge_values = {(u,v,k):norm(values[(u,v,k)]) if (u,v,k) in values.keys() else 0 for u,v,k,edge_data in list(graph.edges(keys=True,data=True))}
+        return edge_values, norm_edge_values
+
+    def get_edge_c(self, graph, values:pd.Series=False, cmap='RdYlGn_r', norm_func=colors.Normalize):
+        cmap=colormaps[cmap]
+        edge_values, norm_edge_values = self.get_edge_values(graph, values, norm_func)
         
         edge_unique_values=sorted(list(set(norm_edge_values.values())))
         value_to_color={load:color for load, color in zip(edge_unique_values, cmap(edge_unique_values))}
@@ -177,13 +181,17 @@ Blocked by traffic: {sum(demand.get_edge_blocked().values())} of {demand.graph.n
         values : Series with (u,v,k) as keys and edge value (for example vehicle count)
         """
         nodes, edges = ox.convert.graph_to_gdfs(graph)
-        if demand:
-            edges['color'], edges['value_displayed']=self.get_edge_c(demand.calc_helper.nx_graph, values, norm_func=norm_func)
+        if is_series:=(type(values)!=bool):
+            _g=graph
+        elif not is_series and demand is not None:
+            _g=demand.calc_helper.nx_graph
+        edges['color'], edges['value_displayed']=self.get_edge_c(_g, values, norm_func=norm_func)
+
         m = edges.explore(
                 m=m if m else None,
                 style_kwds={
                     'style_function': lambda x: {"color":x['properties']['color']}
-                    } if demand else None,
+                    } if is_series or demand is not None else {},
                 tiles = "OpenStreetMap" if tiles else None,
                 
             )
