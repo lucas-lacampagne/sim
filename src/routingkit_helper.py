@@ -23,7 +23,7 @@ class rk_helper:
             order = rk.compute_order_degree(self.node_count, self.tail, self.head)
         elif order=='inertial':
             self.lat=[self.nk_graph.nodes[n_id]['y'] for n_id in self.nk_graph.nodes]
-            self.lon=[self.nk_graph.nodes[n_id]['y'] for n_id in self.nk_graph.nodes]
+            self.lon=[self.nk_graph.nodes[n_id]['x'] for n_id in self.nk_graph.nodes]
             order = rk.compute_order_inertial(self.node_count, self.tail, self.head, self.lat, self.lon)
 
         self.cch = rk.CCH(order, self.tail, self.head, False)
