@@ -25,3 +25,6 @@ In MultiDiGraph, selects the path with minimum weight.
         return selected_id, lanes[selected_id]
     else:
         return None, lanes
+
+def epsilon(length, max_length):
+    return length/max_length/10000

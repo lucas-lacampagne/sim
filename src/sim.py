@@ -15,14 +15,15 @@ from src.rustworkx_helper import rx_helper
 from src.routingkit_helper import rk_helper
 from src.car import Car
 from src.attack_helper import attack_helper
-from src.utils import select_min_weight_lane, timeit
+from src.utils import select_min_weight_lane, timeit, epsilon
 from src.demand import trajs_rdm
 
 class Sim:
     ## INIT METHODS
     @timeit
-    def __init__(self, graph, helper:rx_helper|rk_helper, attack:dict|None, repair:dict, init_trajs:dict, log_trajs:int=0):
+    def __init__(self, graph, helper:rx_helper|rk_helper, init_trajs:dict, attack:dict|None=None, repair:dict=None, log_trajs:int=0):
         self.graph: nx.MultiDiGraph | nx.DiGraph = graph
+        self.max_length_edge=graph.edges[max(list(graph.edges), key=lambda x:graph.edges[x]['length'])]['length']
         self.display_h=Display()
 
         cnt=0
@@ -176,10 +177,11 @@ class Sim:
             self.calc_helper.all_paths[s][t] = [path]
         return self.calc_helper.all_paths
 
-    def handle_interactions(self, node1, node2, edge_id, demand_delta, new_weight, op)->False:
+    # !!! weight_update to tune
+    def handle_interactions(self, node1, node2, edge_id, demand_delta, new_weight, op, weight_update=False)->False:
         edge=self.calc_helper.nx_graph[node1][node2][edge_id]
         edge['load']+=demand_delta
-        if op(edge['load'], edge['capacity']):
+        if op(edge['load'], edge['capacity']) and weight_update:
             self.calc_helper.update_edge(node1, node2, edge_id, 'weight', new_weight) # WORKS for DiGraph ?
         return False
     
@@ -202,7 +204,10 @@ class Sim:
             geom: LineString = edge['geometry']
             
             dist_from_start = geom.project(car.loc)
-            dist_to_go = speed * time_remaining
+            # dist_to_go = speed * time_remaining
+            dist_to_go = 0.00000001
+            if not car.first_step:
+                dist_to_go+=geom.length
             new_dist = dist_from_start + dist_to_go
 
             # Si tu vas aller plus loin que le prochain noeud

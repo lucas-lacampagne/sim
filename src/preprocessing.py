@@ -3,6 +3,7 @@ import osmnx as ox
 import numpy as np
 
 from shapely.geometry import LineString
+from src.utils import epsilon
 
 class preprocessing:
     def __init__(self):
@@ -10,18 +11,19 @@ class preprocessing:
     
     def get_graph(self, city="Piedmont, California, USA", network_type="drive", show=True):
         self.graph = ox.graph.graph_from_place(city, network_type="drive")
+        self.max_length_edge=self.graph.edges[max(list(self.graph.edges), key=lambda x:self.graph.edges[x]['length'])]['length']
         if show:
             ox.plot.plot_graph(self.graph, show=show)
         return self.graph
     
-    def add_attributes(self, show=False):
+    def add_attributes(self, unique_paths=False, show=False):
         for u,v,k in self.graph.edges:
             if 'geometry' not in self.graph.edges[u,v,k]:
                 self.graph[u][v][k]['geometry']=LineString([[self.graph.nodes[u]['x'], self.graph.nodes[u]['y']], [self.graph.nodes[v]['x'], self.graph.nodes[v]['y']]])
             
             attrs_e = {(u, v, k): {
                 'load': 0, 
-                'weight': 1, 
+                'weight': 1 if not unique_paths else 1+(1+k + 10*(u>v))*epsilon(self.graph.edges[(u,v,k)]['length'], self.max_length_edge), 
                 'capacity': 10
                 }
             }
