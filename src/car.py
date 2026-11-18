@@ -2,6 +2,7 @@ import networkx as nx
 
 import copy
 from shapely.geometry import Point
+from src.utils import select_min_weight_lane
 
 import logging
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ class Car:
         self.last_true_node=self.path.pop(0)
         self.next_true_node=self.path[0]
         self.check_next_edge=True
-        self.next_edge_key=0
+        self.next_edge_key,_=select_min_weight_lane(graph, self.last_true_node, self.next_true_node)
 
         self.loc=graph.nodes[departure_node]['x'], graph.nodes[departure_node]['y']
         self.loc=Point(self.loc)

@@ -87,7 +87,7 @@ class Display:
         return {k:colors.to_hex(value_to_color[load]) for k,load in norm_edge_values.items()}, edge_values
 
     def trajs_to_count(self, trajs):
-        df=trajs.sort_values(by='trajectory_id').reset_index(drop=True)
+        df=trajs.sort_values(by=['trajectory_id','t']).reset_index(drop=True)
         df=df.loc[df['edge'].shift(-1) != df['edge']]
         return df['edge'].value_counts()
     
